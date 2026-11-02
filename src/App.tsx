@@ -20,6 +20,7 @@ import {
   saveExtraSeatToStorage
 } from './data/initialData';
 import { Award, Heart, HelpCircle, PhoneCall, ShieldCheck } from 'lucide-react';
+import { fetchPublicSeats, createReservation } from './bookingApi';
 import { KKUNursingLogo } from './components/KKUNursingLogo';
 
 export default function App() {
@@ -27,97 +28,41 @@ export default function App() {
   const [existingSeats, setExistingSeats] = useState<ExistingSeat[]>([]);
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
 
-  // Load initial seats and reservations from storage or default
+  // All visitors share the same server-authoritative seat map.
+  const [seatsReady, setSeatsReady] = useState(false);
+  const [seatsError, setSeatsError] = useState('');
+  const refreshSeats = async () => {
+    try {
+      const seats = await fetchPublicSeats();
+      setExistingSeats(seats);
+      setSeatsError('');
+      setSeatsReady(true);
+    } catch (error) {
+      setSeatsError(error instanceof Error ? error.message : 'ไม่สามารถโหลดข้อมูลที่นั่งได้');
+      setSeatsReady(false);
+    }
+  };
+
   useEffect(() => {
-    const storedRes = getStoredReservations();
-    setReservations(storedRes);
-
-    const storedExtra = getStoredExtraSeats();
-    // Combine initial preset with stored extra seats
-    const seatMap = new Map<string, ExistingSeat>();
-
-    INITIAL_PRESET_SEATS.forEach(s => {
-      seatMap.set(`${s.table}-${s.seat}`, s);
-    });
-
-    storedExtra.forEach(s => {
-      seatMap.set(`${s.table}-${s.seat}`, s);
-    });
-
-    // Also inject any seats from stored reservations if not present
-    storedRes.forEach(r => {
-      r.guests.forEach((g, idx) => {
-        const assign = r.assignments[idx];
-        if (assign) {
-          seatMap.set(`${assign.table}-${assign.seat}`, {
-            table: assign.table,
-            seat: assign.seat,
-            guestName: g.name,
-            category: g.category,
-            ticketCode: g.ticketCode || `GRAD69-${assign.table}${assign.seat}`,
-            checkedIn: false
-          });
-        }
-      });
-    });
-
-    setExistingSeats(Array.from(seatMap.values()));
+    void refreshSeats();
+    const timer = window.setInterval(() => void refreshSeats(), 15000);
+    const onFocus = () => void refreshSeats();
+    window.addEventListener('focus', onFocus);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', onFocus); };
   }, []);
 
-  // Save new reservation
-  const handleSaveReservation = (record: ReservationRecord) => {
-    saveReservationToStorage(record);
+  const handleSaveReservation = async (record: ReservationRecord) => {
+    await createReservation(record);
     setReservations(prev => [record, ...prev]);
-
-    // Update existingSeats with new guests
-    const newSeats: ExistingSeat[] = [];
-    record.guests.forEach((g, idx) => {
-      const assign = record.assignments[idx];
-      if (assign) {
-        const newSeat: ExistingSeat = {
-          table: assign.table,
-          seat: assign.seat,
-          guestName: g.name,
-          category: g.category,
-          ticketCode: g.ticketCode || `GRAD69-${assign.table}${assign.seat}`,
-          checkedIn: false
-        };
-        newSeats.push(newSeat);
-        saveExtraSeatToStorage(newSeat);
-      }
-    });
-
-    setExistingSeats(prev => {
-      const map = new Map<string, ExistingSeat>();
-      prev.forEach(s => map.set(`${s.table}-${s.seat}`, s));
-      newSeats.forEach(s => map.set(`${s.table}-${s.seat}`, s));
-      return Array.from(map.values());
-    });
+    await refreshSeats();
   };
 
-  // Toggle check-in status in admin console
-  const handleToggleCheckIn = (table: number, seat: number) => {
-    setExistingSeats(prev => {
-      const updated = prev.map(s => {
-        if (s.table === table && s.seat === seat) {
-          const toggled = !s.checkedIn;
-          saveExtraSeatToStorage({ ...s, checkedIn: toggled });
-          return { ...s, checkedIn: toggled };
-        }
-        return s;
-      });
-      return updated;
-    });
+  // Administrative changes require a separately authenticated server endpoint.
+  const handleToggleCheckIn = (_table: number, _seat: number) => {
+    window.alert('การเช็กอินต้องใช้สิทธิ์ผู้ดูแล ระบบสาธารณะไม่อนุญาตให้เปลี่ยนสถานะ');
   };
-
-  // Clear all bookings completely (100% available seats)
   const handleResetData = () => {
-    if (window.confirm('คุณต้องการเคลียร์คนจองออกทั้งหมดและเปิดที่นั่งว่าง 100% (120 ที่) ใช่หรือไม่?')) {
-      localStorage.removeItem('grad69_reservations_v1');
-      localStorage.removeItem('grad69_extra_seats_v1');
-      setReservations([]);
-      setExistingSeats([]);
-    }
+    window.alert('ไม่อนุญาตให้ลบข้อมูลการจองผ่านหน้าเว็บไซต์สาธารณะ');
   };
 
   const totalSeats = 120;
@@ -155,9 +100,11 @@ export default function App() {
         <div id="registration-flow-anchor" />
 
         {/* Tab 1: Registration and Seat Assignment Flow */}
+        {seatsError && <div role="alert" className="mb-5 rounded-xl border border-red-300 bg-red-50 p-4 text-red-800">{seatsError} — ปิดการยืนยันการจองชั่วคราวเพื่อป้องกันจองซ้ำ <button className="underline" onClick={() => void refreshSeats()}>ลองใหม่</button></div>}
         {activeTab === 'register' && (
           <RegistrationFlow
             existingSeats={existingSeats}
+            seatsReady={seatsReady}
             onSaveReservation={handleSaveReservation}
             onViewAdmin={() => setActiveTab('admin')}
             onViewFloorPlan={() => setActiveTab('floorplan')}

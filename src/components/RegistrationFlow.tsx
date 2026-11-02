@@ -31,7 +31,8 @@ import { EmailTicketModal } from './EmailTicketModal';
 
 interface RegistrationFlowProps {
   existingSeats: ExistingSeat[];
-  onSaveReservation: (record: ReservationRecord) => void;
+  onSaveReservation: (record: ReservationRecord) => Promise<void>;
+  seatsReady: boolean;
   onViewAdmin: () => void;
   onViewFloorPlan: () => void;
 }
@@ -41,23 +42,24 @@ const TICKET_PRICE = 799;
 export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   existingSeats,
   onSaveReservation,
+  seatsReady,
   onViewAdmin,
   onViewFloorPlan
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Form States - Step 1
-  const [bookerName, setBookerName] = useState('นางสาวกีรณา วงศ์พัฒนกิจ');
-  const [phone, setPhone] = useState('089-123-4567');
-  const [email, setEmail] = useState('keerana.w@alumni.ac.th');
+  const [bookerName, setBookerName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [category, setCategory] = useState<AttendeeCategory>('graduate');
   const [academicYear, setAcademicYear] = useState('รุ่น 2569');
   const [guestCount, setGuestCount] = useState<number>(2);
 
   // Individual guests state
   const [guests, setGuests] = useState<GuestInfo[]>([
-    { id: '1', name: 'นางสาวกีรณา วงศ์พัฒนกิจ', category: 'graduate' },
-    { id: '2', name: 'นายธีรเดช เจริญสุข', category: 'guest' }
+    { id: '1', name: '', category: 'graduate' },
+    { id: '2', name: '', category: 'guest' }
   ]);
 
   // Step 2: Payment
@@ -65,6 +67,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   const [slipPreview, setSlipPreview] = useState<string | null>(null);
   const [verifyConfirmed, setVerifyConfirmed] = useState(false);
   const [slipError, setSlipError] = useState('');
+  const [saving, setSaving] = useState(false);
 
   // Step 4: Seat Assignment
   const [selectedTableId, setSelectedTableId] = useState<number>(1);
@@ -129,10 +132,11 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     }
   };
 
-  // Payment upload mock
+  // Local slip preview only; payment must be independently verified by the organizer
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { setSlipError('ไฟล์ต้องมีขนาดไม่เกิน 10MB'); return; }
     setSlipFile(file);
     setSlipError('');
 
@@ -141,13 +145,6 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       setSlipPreview(reader.result as string);
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleUseMockSlip = () => {
-    setSlipFile(new File(['dummy'], 'krungthai_slip_transfer.jpg', { type: 'image/jpeg' }));
-    setSlipPreview('https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=500&q=80');
-    setVerifyConfirmed(true);
-    setSlipError('');
   };
 
   const handleStep2Submit = () => {
@@ -231,7 +228,9 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   };
 
   // Confirm reservation and generate tickets
-  const handleConfirmReservation = () => {
+  const handleConfirmReservation = async () => {
+    if (saving || !seatsReady) return;
+    if (!bookerName.trim() || guests.some(g => !g.name.trim())) { alert('กรุณากรอกชื่อผู้จองและผู้ร่วมงานให้ครบ'); return; }
     // Check all guests have seats
     const allAssigned = guests.every((_, idx) => !!assignments[idx]);
     if (!allAssigned) {
@@ -239,7 +238,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       return;
     }
 
-    const reservationId = 'RES-' + Math.floor(100000 + Math.random() * 900000);
+    const reservationId = 'RES-' + crypto.randomUUID();
     const timestamp = new Date().toLocaleString('th-TH');
 
     const updatedGuests = guests.map((g, idx) => {
@@ -262,15 +261,22 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       assignments,
       totalAmount: guestCount * TICKET_PRICE,
       slipFileName: slipFile?.name || 'slip.jpg',
-      slipUrl: slipPreview || undefined,
+      slipUrl: undefined, // Never store a base64 slip in a public reservation payload
       slipTimestamp: timestamp,
-      status: 'verified',
+      status: 'pending', // A slip upload is not payment verification
       createdAt: timestamp
     };
 
-    setConfirmedReservation(record);
-    onSaveReservation(record);
-    setCurrentStep(5);
+    setSaving(true);
+    try {
+      await onSaveReservation(record);
+      setConfirmedReservation(record);
+      setCurrentStep(5);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'บันทึกการจองไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const copyTicketCode = (code: string, idx: number) => {
@@ -577,7 +583,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   <div className="flex justify-between items-center">
                     <span className="text-slate-400">เลขที่บัญชี:</span>
                     <span className="font-mono text-base font-bold text-amber-200 tracking-wider">
-                      123-4-56789-0
+                      รอผู้จัดงานยืนยันบัญชี
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -590,7 +596,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               {/* PromptPay QR Code Mock with scan instructions */}
               <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 text-center">
                 <span className="text-xs font-semibold text-slate-600 block mb-3">
-                  สแกนผ่าน Mobile Banking (QR พร้อมเพย์)
+                  QR ด้านล่างเป็นภาพประกอบ ไม่สามารถใช้ชำระเงินได้
                 </span>
                 <div className="inline-block p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
                   {/* Generated QR Code styling */}
@@ -607,7 +613,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 mt-2">
-                  สแกนแล้วระบบจะระบุยอด {(guestCount * TICKET_PRICE).toLocaleString('th-TH')} บาท อัตโนมัติ
+                  โปรดอย่าโอนเงินผ่านภาพ QR ตัวอย่างนี้
                 </p>
               </div>
             </div>
@@ -665,17 +671,6 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   )}
                 </div>
 
-                {/* Quick test button for instant simulation */}
-                <div className="mt-2 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={handleUseMockSlip}
-                    className="text-xs text-amber-700 hover:text-amber-900 underline flex items-center gap-1 font-medium"
-                  >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>ใช้สลิปจำลองสำหรับทดสอบ (One-click Demo Slip)</span>
-                  </button>
-                </div>
               </div>
 
               {/* Confirmation checkbox */}
@@ -1024,11 +1019,11 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmReservation}
-                disabled={Object.keys(assignments).length !== guestCount}
+                disabled={saving || !seatsReady || Object.keys(assignments).length !== guestCount}
                 className="px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>ยืนยันโต๊ะและรับบัตรเข้างาน</span>
+                <span>{saving ? 'กำลังตรวจสอบและบันทึก...' : 'ยืนยันโต๊ะและรับบัตรเข้างาน'}</span>
               </button>
             </div>
           </div>
