@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    font-family: 'Noto Sans Thai', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  h1, h2, h3, .font-serif-thai {
+    font-family: 'Noto Serif Thai', 'Cinzel', Georgia, serif;
+  }
+}
+
+/* Custom Print Optimization for Official Tickets */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  
+  header, footer, nav, .no-print, .print-hide, button {
+    display: none !important;
+  }
+  
+  .print-area {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 10px !important;
+  }
+
+  .ticket-card {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    box-shadow: none !important;
+    border: 1px solid #c8a356 !important;
+    margin-bottom: 24px !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #printable-admin-ticket {
+    display: block !important;
+    width: 100% !important;
+    max-width: 800px !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: 2px solid #b45309 !important;
+  }
+}

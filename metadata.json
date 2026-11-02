@@ -1,0 +1,6 @@
+{
+  "name": "ยินดีบัณฑิต 2569 | Graduation Gala Registration & Seating",
+  "description": "ระบบลงทะเบียน ชำระเงิน และสำรองผังที่นั่งงานฉลองยินดีบัณฑิต 2569 พร้อมบัตรเข้างานดิจิทัลและระบบค้นหาที่นั่ง",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
