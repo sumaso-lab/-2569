@@ -28,7 +28,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'register' | 'floorplan' | 'search' | 'checkin' | 'admin'>('register');
   const [existingSeats, setExistingSeats] = useState<ExistingSeat[]>([]);
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
-
+const [isAdmin, setIsAdmin] = useState(false);
   // All visitors share the same server-authoritative seat map.
   const [seatsReady, setSeatsReady] = useState(false);
   const [seatsError, setSeatsError] = useState('');
