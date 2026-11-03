@@ -22,6 +22,7 @@ import {
 } from './data/initialData';
 import { Award, Heart, HelpCircle, PhoneCall, ShieldCheck } from 'lucide-react';
 import { fetchPublicSeats, createReservation, fetchAdminReservations } from './bookingApi';
+import { supabase } from './supabase';
 import { KKUNursingLogo } from './components/KKUNursingLogo';
 
 export default function App() {
@@ -67,9 +68,50 @@ const [isAdmin, setIsAdmin] = useState(false);
   };
 
   // Administrative changes require a separately authenticated server endpoint.
-  const handleToggleCheckIn = (_table: number, _seat: number) => {
-    window.alert('การเช็กอินต้องใช้สิทธิ์ผู้ดูแล ระบบสาธารณะไม่อนุญาตให้เปลี่ยนสถานะ');
-  };
+  
+const handleToggleCheckIn = async (table: number, seat: number) => {
+  if (!isAdmin) {
+    window.alert('กรุณาเข้าสู่ระบบเจ้าหน้าที่ก่อน');
+    return;
+  }
+
+  const currentSeat = existingSeats.find(
+    (s) => s.table === table && s.seat === seat
+  );
+
+  if (!currentSeat) {
+    window.alert('ไม่พบข้อมูลที่นั่งนี้');
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('admin-api', {
+      body: {
+        action: 'set-checkin',
+        table,
+        seat,
+        checkedIn: !currentSeat.checkedIn,
+      },
+    });
+
+    if (error || !data?.success) {
+      throw new Error('ไม่สามารถบันทึกการเช็กอินได้');
+    }
+
+    setExistingSeats((prev) =>
+      prev.map((s) =>
+        s.table === table && s.seat === seat
+          ? { ...s, checkedIn: data.seat.checked_in }
+          : s
+      )
+    );
+
+    window.alert('บันทึกสถานะ Check-in สำเร็จ');
+  } catch (error) {
+    window.alert('เกิดข้อผิดพลาดในการเช็กอิน กรุณาลองใหม่');
+  }
+};
+
   const handleResetData = () => {
     window.alert('ไม่อนุญาตให้ลบข้อมูลการจองผ่านหน้าเว็บไซต์สาธารณะ');
   };
