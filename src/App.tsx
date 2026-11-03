@@ -21,7 +21,7 @@ import {
   saveExtraSeatToStorage
 } from './data/initialData';
 import { Award, Heart, HelpCircle, PhoneCall, ShieldCheck } from 'lucide-react';
-import { fetchPublicSeats, createReservation } from './bookingApi';
+import { fetchPublicSeats, createReservation, fetchAdminReservations } from './bookingApi';
 import { KKUNursingLogo } from './components/KKUNursingLogo';
 
 export default function App() {
