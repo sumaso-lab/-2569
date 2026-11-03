@@ -29,6 +29,14 @@ export default function App() {
   const [existingSeats, setExistingSeats] = useState<ExistingSeat[]>([]);
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
 const [isAdmin, setIsAdmin] = useState(false);
+  const loadAdminReservations = async () => {
+  try {
+    const data = await fetchAdminReservations();
+    setReservations(data);
+  } catch (error) {
+    window.alert('ไม่สามารถโหลดข้อมูลผู้จองได้ กรุณาลองใหม่');
+  }
+};
   // All visitors share the same server-authoritative seat map.
   const [seatsReady, setSeatsReady] = useState(false);
   const [seatsError, setSeatsError] = useState('');
@@ -150,7 +158,7 @@ const [isAdmin, setIsAdmin] = useState(false);
       onResetData={handleResetData}
     />
   ) : (
-    <AdminLogin onSuccess={() => setIsAdmin(true)} />
+   <AdminLogin onSuccess={() => { setIsAdmin(true); void loadAdminReservations(); }} />
   )
 )}
 
