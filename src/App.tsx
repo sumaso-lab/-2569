@@ -10,6 +10,7 @@ import { RegistrationFlow } from './components/RegistrationFlow';
 import { GrandFloorPlan } from './components/GrandFloorPlan';
 import { TicketLookup } from './components/TicketLookupModal';
 import { AdminConsole } from './components/AdminConsole';
+import { AdminLogin } from './components/AdminLogin';
 import { CheckInScanner } from './components/CheckInScanner';
 import { ExistingSeat, ReservationRecord } from './types';
 import {
