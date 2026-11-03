@@ -26,3 +26,35 @@ export async function createReservation(record: ReservationRecord): Promise<void
   const { id, mainBooker, phone, email, category, academicYear, guestCount, guests, assignments, totalAmount, slipFileName, slipTimestamp } = record;
   await request('create-reservation', { id, mainBooker, phone, email, category, academicYear, guestCount, guests, assignments, totalAmount, slipFileName, slipTimestamp });
 }
+
+export async function fetchAdminReservations(): Promise<ReservationRecord[]> {
+  const { supabase } = await import('./supabase');
+
+  const { data, error } = await supabase.functions.invoke(
+    'admin-api',
+    { body: { action: 'list-reservations' } }
+  );
+
+  if (error) throw error;
+  if (!Array.isArray(data?.reservations)) {
+    throw new Error('ไม่สามารถโหลดรายการจองได้');
+  }
+
+  return data.reservations.map((row: any) => ({
+    id: row.id,
+    mainBooker: row.main_booker,
+    phone: row.phone,
+    email: row.email,
+    category: row.category,
+    academicYear: row.academic_year,
+    guestCount: row.guest_count,
+    guests: row.guests,
+    assignments: row.assignments,
+    totalAmount: row.total_amount,
+    slipFileName: row.slip_file_name,
+    slipUrl: row.slip_url,
+    slipTimestamp: row.slip_timestamp,
+    status: row.status,
+    createdAt: row.created_at
+  }));
+}
