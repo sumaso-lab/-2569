@@ -139,14 +139,20 @@ export default function App() {
         )}
 
         {/* Tab 5: Admin Management Console */}
-        {activeTab === 'admin' && (
-          <AdminConsole
-            existingSeats={existingSeats}
-            reservations={reservations}
-            onToggleCheckIn={handleToggleCheckIn}
-            onResetData={handleResetData}
-          />
-        )}
+        
+{activeTab === 'admin' && (
+  isAdmin ? (
+    <AdminConsole
+      existingSeats={existingSeats}
+      reservations={reservations}
+      onToggleCheckIn={handleToggleCheckIn}
+      onResetData={handleResetData}
+    />
+  ) : (
+    <AdminLogin onSuccess={() => setIsAdmin(true)} />
+  )
+)}
+
       </main>
 
       {/* Clean University Footer */}
