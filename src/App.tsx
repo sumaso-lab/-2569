@@ -22,7 +22,7 @@ import {
   updateReservationStatusInStorage
 } from './data/initialData';
 import { Award, Heart, HelpCircle, PhoneCall, ShieldCheck } from 'lucide-react';
-import { fetchPublicSeats, createReservation, fetchAdminReservations } from './bookingApi';
+import { fetchPublicSeats, createReservation, fetchAdminReservations, deleteReservationFromServer } from './bookingApi';
 import { supabase } from './supabase';
 import { KKUNursingLogo } from './components/KKUNursingLogo';
 
@@ -30,15 +30,17 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'register' | 'floorplan' | 'search' | 'checkin' | 'admin'>('register');
   const [existingSeats, setExistingSeats] = useState<ExistingSeat[]>([]);
   const [reservations, setReservations] = useState<ReservationRecord[]>([]);
-const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [isStaffTestMode, setIsStaffTestMode] = useState(false);
+
   const loadAdminReservations = async () => {
-  try {
-    const data = await fetchAdminReservations();
-    setReservations(data);
-  } catch (error) {
-    window.alert('ไม่สามารถโหลดข้อมูลผู้จองได้ กรุณาลองใหม่');
-  }
-};
+    try {
+      const data = await fetchAdminReservations();
+      setReservations(data);
+    } catch (error) {
+      window.alert('ไม่สามารถโหลดข้อมูลผู้จองได้ กรุณาลองใหม่');
+    }
+  };
   // All visitors share the same server-authoritative seat map.
   const [seatsReady, setSeatsReady] = useState(false);
   const [seatsError, setSeatsError] = useState('');
@@ -138,6 +140,17 @@ const [isAdmin, setIsAdmin] = useState(false);
     updateReservationStatusInStorage(id, status);
   };
 
+  const handleDeleteReservation = async (reservationId: string) => {
+    try {
+      const result = await deleteReservationFromServer(reservationId);
+      window.alert(result.message || 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
+      setReservations(prev => prev.filter(r => r.id !== reservationId));
+      await refreshSeats();
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการลบข้อมูลการจองจากเซิร์ฟเวอร์');
+    }
+  };
+
   const handleAddManualSeat = (newSeat: ExistingSeat) => {
     setExistingSeats(prev => [...prev.filter(s => !(s.table === newSeat.table && s.seat === newSeat.seat)), newSeat]);
     saveExtraSeatToStorage(newSeat);
@@ -157,6 +170,7 @@ const [isAdmin, setIsAdmin] = useState(false);
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         onStartRegistration={() => {
+          setIsStaffTestMode(false);
           setActiveTab('register');
           window.scrollTo({ top: 350, behavior: 'smooth' });
         }}
@@ -188,8 +202,16 @@ const [isAdmin, setIsAdmin] = useState(false);
             existingSeats={existingSeats}
             seatsReady={seatsReady}
             onSaveReservation={handleSaveReservation}
-            onViewAdmin={() => setActiveTab('admin')}
+            onViewAdmin={() => {
+              setIsStaffTestMode(false);
+              setActiveTab('admin');
+            }}
             onViewFloorPlan={() => setActiveTab('floorplan')}
+            isTestMode={isStaffTestMode}
+            onExitTestMode={() => {
+              setIsStaffTestMode(false);
+              setActiveTab('admin');
+            }}
           />
         )}
 
@@ -230,21 +252,25 @@ const [isAdmin, setIsAdmin] = useState(false);
         )}
 
         {/* Tab 5: Admin Management Console */}
-        
-{activeTab === 'admin' && (
-  isAdmin ? (
-    <AdminConsole
-      existingSeats={existingSeats}
-      reservations={reservations}
-      onToggleCheckIn={handleToggleCheckIn}
-      onResetData={handleResetData}
-      onUpdateReservationStatus={handleUpdateReservationStatus}
-      onAddManualSeat={handleAddManualSeat}
-    />
-  ) : (
-   <AdminLogin onSuccess={() => { setIsAdmin(true); void loadAdminReservations(); }} />
-  )
-)}
+        {activeTab === 'admin' && (
+          isAdmin ? (
+            <AdminConsole
+              existingSeats={existingSeats}
+              reservations={reservations}
+              onToggleCheckIn={handleToggleCheckIn}
+              onResetData={handleResetData}
+              onUpdateReservationStatus={handleUpdateReservationStatus}
+              onAddManualSeat={handleAddManualSeat}
+              onDeleteReservation={handleDeleteReservation}
+              onStartTestRegistration={() => {
+                setIsStaffTestMode(true);
+                setActiveTab('register');
+              }}
+            />
+          ) : (
+           <AdminLogin onSuccess={() => { setIsAdmin(true); void loadAdminReservations(); }} />
+          )
+        )}
 
       </main>
 

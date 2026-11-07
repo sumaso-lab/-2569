@@ -30,7 +30,8 @@ import {
   FolderOpen,
   FileCheck2,
   Printer,
-  Paperclip
+  Paperclip,
+  Clock
 } from 'lucide-react';
 import { ExistingSeat, ReservationRecord, AttendeeCategory, GuestInfo, AttachedDocument } from '../types';
 import {
@@ -53,6 +54,7 @@ import {
   getAllAttachedDocuments,
   EnrichedAttachedDocument
 } from '../utils/documentHelper';
+import { dispatchTicketEmail, getDocumentSignedUrl } from '../bookingApi';
 
 interface AdminConsoleProps {
   existingSeats: ExistingSeat[];
@@ -67,6 +69,7 @@ interface AdminConsoleProps {
   onSwapSeats?: (tableA: number, seatA: number, tableB: number, seatB: number) => void;
   onDeleteSeat?: (table: number, seat: number) => void;
   onAddManualSeat?: (newSeat: ExistingSeat) => void;
+  onStartTestRegistration?: () => void;
 }
 
 const TICKET_PRICE = 799;
@@ -83,7 +86,8 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   onReassignSeat,
   onSwapSeats,
   onDeleteSeat,
-  onAddManualSeat
+  onAddManualSeat,
+  onStartTestRegistration
 }) => {
   // Passcode Security States
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
@@ -120,6 +124,15 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   } | null>(null);
   const [previewSlipUrl, setPreviewSlipUrl] = useState<{ url: string; title: string; reservation?: ReservationRecord } | null>(null);
   const [emailModalSeat, setEmailModalSeat] = useState<ExistingSeat | null>(null);
+
+  // Real Server Deletion Modal State
+  const [deletingReservation, setDeletingReservation] = useState<ReservationRecord | null>(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Signed URL State for Viewing Private Storage Files
+  const [signedUrlLoading, setSignedUrlLoading] = useState(false);
+  const [activeSignedUrl, setActiveSignedUrl] = useState<string>('');
 
   // Staff Test Cases in Sandbox (Persisted in localStorage for convenience)
   const [testCases, setTestCases] = useState<ReservationRecord[]>(() => {
@@ -458,6 +471,23 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
     }
   };
 
+  // Real Atomic Server Deletion Handler
+  const handleExecuteDelete = async () => {
+    if (!deletingReservation || !onDeleteReservation) return;
+    setIsDeleting(true);
+    try {
+      await onDeleteReservation(deletingReservation.id);
+      if (testCases.some(tc => tc.id === deletingReservation.id)) {
+        saveTestCases(testCases.filter(tc => tc.id !== deletingReservation.id));
+      }
+      setDeletingReservation(null);
+    } catch (err: any) {
+      alert(err.message || 'เกิดข้อผิดพลาดในการลบข้อมูลการจอง');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Add Walk-in Guest
   const handleAddWalkinSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -546,13 +576,58 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
     return true;
   });
 
-  const handleOpenDocumentViewer = (reservation: ReservationRecord, initialDocIndex = 0) => {
+  const handleOpenDocumentViewer = async (reservation: ReservationRecord, initialDocIndex = 0) => {
     const docs = getReservationDocuments(reservation);
+    const targetIdx = Math.min(Math.max(0, initialDocIndex), docs.length - 1);
     setPreviewDocumentModal({
       reservation,
       documents: docs,
-      activeDocIndex: Math.min(Math.max(0, initialDocIndex), docs.length - 1)
+      activeDocIndex: targetIdx
     });
+
+    const activeDoc = docs[targetIdx];
+    if (activeDoc && activeDoc.hasRealFile && activeDoc.url) {
+      if (activeDoc.url.startsWith('data:') || activeDoc.url.startsWith('blob:')) {
+        setActiveSignedUrl(activeDoc.url);
+      } else {
+        setSignedUrlLoading(true);
+        try {
+          const signed = await getDocumentSignedUrl(activeDoc.storagePath || activeDoc.url);
+          setActiveSignedUrl(signed);
+        } catch (e) {
+          console.error(e);
+          setActiveSignedUrl('');
+        } finally {
+          setSignedUrlLoading(false);
+        }
+      }
+    } else {
+      setActiveSignedUrl('');
+    }
+  };
+
+  const handleSwitchDocIndex = async (newIndex: number) => {
+    if (!previewDocumentModal) return;
+    setPreviewDocumentModal(prev => prev ? { ...prev, activeDocIndex: newIndex } : null);
+    const doc = previewDocumentModal.documents[newIndex];
+    if (doc && doc.hasRealFile && doc.url) {
+      if (doc.url.startsWith('data:') || doc.url.startsWith('blob:')) {
+        setActiveSignedUrl(doc.url);
+      } else {
+        setSignedUrlLoading(true);
+        try {
+          const signed = await getDocumentSignedUrl(doc.storagePath || doc.url);
+          setActiveSignedUrl(signed);
+        } catch (e) {
+          console.error(e);
+          setActiveSignedUrl('');
+        } finally {
+          setSignedUrlLoading(false);
+        }
+      }
+    } else {
+      setActiveSignedUrl('');
+    }
   };
 
   // Handle Staff Test Cases
@@ -748,10 +823,18 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
         }
       });
     }
-    // 4. Send immediate approval email
+    // 4. Send immediate approval email (Resend Edge Function + Local Logger)
     sendImmediateApprovalEmail(res);
     setEmailLogs(getEmailDispatchLogs());
-    alert(`✓ อนุมัติสลิปและออกบัตรดิจิทัลเรียบร้อยแล้ว!\nระบบได้จำลองส่งอีเมลบัตรเข้างานพร้อม QR Code ไปยัง ${res.email || 'ผู้ร่วมงาน'} ทันที`);
+    dispatchTicketEmail(res.id, 'send-ticket-pass')
+      .then(emailRes => {
+        console.log('Ticket email dispatch result:', emailRes);
+      })
+      .catch(err => {
+        console.warn('Ticket email notice:', err.message);
+      });
+
+    alert(`✓ อนุมัติสลิปและออกบัตรดิจิทัลเรียบร้อยแล้ว!\nระบบได้ส่งคำสั่งส่งอีเมลบัตร Digital Gala Pass พร้อม QR Code ไปยัง ${res.email || 'ผู้ร่วมงาน'}`);
   };
 
   // Export CSV
@@ -1135,16 +1218,30 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                 </div>
               </div>
 
-              {testCases.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleClearTestCases}
-                  className="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>ล้างเคสทดสอบ ({testCases.length})</span>
-                </button>
-              )}
+              <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+                {onStartTestRegistration && (
+                  <button
+                    type="button"
+                    onClick={onStartTestRegistration}
+                    className="px-3.5 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-md cursor-pointer transition-all shrink-0"
+                    title="เปิดขั้นตอนการลงทะเบียนเสมือนผู้ใช้งานจริง (ไม่แตะฐานข้อมูลจริง)"
+                  >
+                    <FlaskConical className="w-4 h-4 text-slate-950" />
+                    <span>ทดลองลงทะเบียน (Simulation Mode)</span>
+                  </button>
+                )}
+
+                {testCases.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleClearTestCases}
+                    className="px-3 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-colors shrink-0"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>ล้างเคสทดสอบ ({testCases.length})</span>
+                  </button>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
@@ -1421,14 +1518,14 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (window.confirm(`ต้องการลบรายการจองของ ${res.mainBooker} หรือไม่? (ที่นั่งที่จองไว้จะถูกยกเลิกด้วย)`)) {
-                              onDeleteReservation(res.id);
-                            }
+                            setDeletingReservation(res);
+                            setDeleteConfirmText('');
                           }}
-                          className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors"
-                          title="ลบรายการนี้"
+                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+                          title="ลบผู้ลงทะเบียนจริง (เซิร์ฟเวอร์)"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                          <span>ลบผู้ลงทะเบียน</span>
                         </button>
                       )}
                     </div>
@@ -3075,6 +3172,339 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
           defaultEmail={emailModalSeat.email || ''}
           tableName={TABLES.find(t => t.id === emailModalSeat.table)?.name}
         />
+      )}
+
+      {/* ================= MODAL: ALL ATTACHED DOCUMENTS & SLIPS VIEWER ================= */}
+      {previewDocumentModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+          <div className="bg-slate-900 rounded-3xl max-w-4xl w-full border-2 border-amber-500/40 p-5 sm:p-7 shadow-2xl relative my-auto space-y-4 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-amber-500/20 text-amber-400 rounded-xl">
+                  <FolderOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base sm:text-lg font-bold text-amber-200 font-serif-thai">
+                    เอกสารแนบการจอง: {previewDocumentModal.reservation.mainBooker}
+                  </h3>
+                  <div className="text-xs text-slate-400 flex items-center gap-2">
+                    <span className="font-mono text-amber-300 font-bold">{previewDocumentModal.reservation.id}</span>
+                    <span>·</span>
+                    <span>เอกสารทั้งหมด {previewDocumentModal.documents.length} ฉบับ</span>
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewDocumentModal(null)}
+                className="p-1.5 rounded-full text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Document Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+              {previewDocumentModal.documents.map((doc, idx) => (
+                <button
+                  key={doc.id}
+                  type="button"
+                  onClick={() => void handleSwitchDocIndex(idx)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                    previewDocumentModal.activeDocIndex === idx
+                      ? 'bg-amber-500 text-slate-950 shadow'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>{doc.name}</span>
+                  {!doc.hasRealFile && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-900 text-rose-300 font-mono">ไม่มีไฟล์จริง</span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            {/* Document Content & Details Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+              {/* Left 2 Cols: The Document Display */}
+              <div className="md:col-span-2 flex flex-col items-center justify-center bg-slate-950/80 p-4 rounded-2xl border border-slate-800 min-h-[350px]">
+                {(() => {
+                  const activeDoc = previewDocumentModal.documents[previewDocumentModal.activeDocIndex];
+                  if (!activeDoc || !activeDoc.hasRealFile || (!activeDoc.url && !activeSignedUrl)) {
+                    return (
+                      <div className="text-center py-12 px-6 max-w-md space-y-3">
+                        <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
+                          <AlertCircle className="w-8 h-8 text-amber-400" />
+                        </div>
+                        <h4 className="font-bold text-amber-300 text-base">
+                          ⚠️ ไม่พบไฟล์แนบจริงใน Storage
+                        </h4>
+                        <p className="text-xs text-slate-400 leading-relaxed">
+                          รายการจองนี้ยังไม่มีไฟล์แนบที่อัปโหลดเข้าสู่ Supabase Storage (Bucket <code>payment-slips</code>)
+                          ระบบรักษาความถูกต้องของข้อมูลตามข้อเท็จจริง โดยไม่สร้างภาพสลิปจำลองขึ้นมาแทนที่
+                        </p>
+                        <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400 text-left space-y-1">
+                          <div>• <strong>ผู้จอง:</strong> {previewDocumentModal.reservation.mainBooker}</div>
+                          <div>• <strong>เบอร์โทร:</strong> {previewDocumentModal.reservation.phone}</div>
+                          <div>• <strong>ชื่อไฟล์เดิมที่ระบุ:</strong> {previewDocumentModal.reservation.slipFileName || 'ไม่มี'}</div>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (signedUrlLoading) {
+                    return (
+                      <div className="py-20 text-center text-slate-400 space-y-3">
+                        <RefreshCw className="w-8 h-8 animate-spin mx-auto text-amber-400" />
+                        <span className="text-xs font-semibold">กำลังเชื่อมต่อ Supabase Storage และสร้าง Signed URL...</span>
+                      </div>
+                    );
+                  }
+
+                  const displayUrl = activeSignedUrl || activeDoc.url;
+                  const isPdf = activeDoc.mimeType === 'application/pdf' || displayUrl.includes('.pdf') || (activeDoc.name && activeDoc.name.toLowerCase().endsWith('.pdf'));
+
+                  return (
+                    <div className="w-full flex flex-col items-center">
+                      {isPdf ? (
+                        <iframe
+                          src={displayUrl}
+                          title={activeDoc.name}
+                          className="w-full h-[54vh] rounded-xl border border-slate-700 bg-white shadow-xl"
+                        />
+                      ) : (
+                        <img
+                          src={displayUrl}
+                          alt={activeDoc.name}
+                          className="max-h-[54vh] w-auto rounded-xl shadow-2xl object-contain border border-slate-700 bg-slate-900"
+                        />
+                      )}
+
+                      <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
+                        <a
+                          href={displayUrl}
+                          download={activeDoc.name || 'document'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5 text-amber-400" />
+                          <span>ดาวน์โหลดไฟล์ต้นฉบับ</span>
+                        </a>
+                        <a
+                          href={displayUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                          <span>เปิดดูเต็มจอในแท็บใหม่</span>
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Right Col: Reservation Info & Actions */}
+              <div className="space-y-4 text-xs text-slate-300">
+                <div className="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 space-y-2.5">
+                  <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block">
+                    ข้อมูลผู้จอง & สถานะ
+                  </span>
+                  <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                    <span className="text-slate-400">รหัสจอง:</span>
+                    <span className="font-mono font-bold text-amber-300">{previewDocumentModal.reservation.id}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                    <span className="text-slate-400">ผู้จอง:</span>
+                    <span className="font-semibold text-white">{previewDocumentModal.reservation.mainBooker}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                    <span className="text-slate-400">โทร:</span>
+                    <span className="text-white">{previewDocumentModal.reservation.phone}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                    <span className="text-slate-400">อีเมล:</span>
+                    <span className="text-white">{previewDocumentModal.reservation.email || '-'}</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                    <span className="text-slate-400">จำนวนที่นั่ง:</span>
+                    <span className="font-bold text-white">{previewDocumentModal.reservation.guestCount} ท่าน</span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                    <span className="text-slate-400">ยอดชำระ:</span>
+                    <span className="font-bold text-amber-300 text-sm">
+                      {(previewDocumentModal.reservation.guestCount * TICKET_PRICE).toLocaleString()} บาท
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                    <span className="text-slate-400">สถานะ:</span>
+                    <span className={`font-bold px-2 py-0.5 rounded ${
+                      previewDocumentModal.reservation.status === 'verified'
+                        ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-500/40'
+                        : previewDocumentModal.reservation.status === 'pending'
+                        ? 'bg-amber-900/60 text-amber-300 border border-amber-500/40'
+                        : 'bg-rose-900/60 text-rose-300 border border-rose-500/40'
+                    }`}>
+                      {previewDocumentModal.reservation.status === 'verified'
+                        ? '✓ อนุมัติแล้ว'
+                        : previewDocumentModal.reservation.status === 'pending'
+                        ? '⏳ รอตรวจ'
+                        : '✕ ปฏิเสธ'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between pt-1">
+                    <span className="text-slate-400">ที่นั่ง:</span>
+                    <span className="text-amber-200 font-medium">
+                      {previewDocumentModal.reservation.guests?.map(g => g.table && g.seat ? `T${g.table}S${g.seat}` : null).filter(Boolean).join(', ') || 'ยังไม่ระบุ'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                {previewDocumentModal.reservation.status === 'pending' && (
+                  <div className="space-y-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleApproveReservation(previewDocumentModal.reservation);
+                        setPreviewDocumentModal(null);
+                      }}
+                      className="w-full py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>อนุมัติ & ส่งบัตรดิจิทัล</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reason = window.prompt('ระบุเหตุผลที่ปฏิเสธสลิป:', 'ยอดเงินไม่ถูกต้องหรือไม่พบข้อมูลการโอน');
+                        if (reason !== null) {
+                          if (onUpdateReservation) {
+                            onUpdateReservation({ ...previewDocumentModal.reservation, status: 'rejected', rejectionReason: reason });
+                          } else if (onUpdateReservationStatus) {
+                            onUpdateReservationStatus(previewDocumentModal.reservation.id, 'rejected');
+                          }
+                          setPreviewDocumentModal(null);
+                        }
+                      }}
+                      className="w-full py-2 bg-slate-800 hover:bg-rose-950 text-rose-400 border border-rose-800/40 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <span>ปฏิเสธเอกสารนี้</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= MODAL: DOUBLE CONFIRMATION SERVER DELETION ================= */}
+      {deletingReservation && (
+        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border-2 border-rose-300 relative space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5 text-rose-600">
+                <div className="p-2 bg-rose-100 rounded-xl">
+                  <Trash2 className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900">
+                    ยืนยันการลบผู้ลงทะเบียน (Server Deletion)
+                  </h3>
+                  <span className="text-[11px] text-rose-600 font-semibold">
+                    ดำเนินการลบผ่าน Supabase Edge Function จริง
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeletingReservation(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
+              <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                <span className="text-slate-500">ชื่อผู้จองหลัก:</span>
+                <span className="font-bold text-slate-900 text-sm">{deletingReservation.mainBooker}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                <span className="text-slate-500">เลขที่การจอง (Booking ID):</span>
+                <span className="font-mono font-bold text-amber-700">{deletingReservation.id}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                <span className="text-slate-500">เบอร์โทรศัพท์:</span>
+                <span className="font-semibold text-slate-800">{deletingReservation.phone}</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                <span className="text-slate-500">จำนวนที่นั่งที่จะคืนสู่ระบบ:</span>
+                <span className="font-bold text-rose-600 text-sm">{deletingReservation.guestCount} ที่นั่ง</span>
+              </div>
+              <div className="flex justify-between border-b border-slate-200 pb-1.5">
+                <span className="text-slate-500">ยอดเงินที่เกี่ยวข้อง:</span>
+                <span className="font-bold text-slate-900">{(deletingReservation.guestCount * TICKET_PRICE).toLocaleString()} บาท</span>
+              </div>
+              <div className="flex justify-between pt-1">
+                <span className="text-slate-500">ที่นั่งที่ระบุ:</span>
+                <span className="text-slate-800 font-medium">
+                  {deletingReservation.guests?.map(g => g.table && g.seat ? `โต๊ะ ${g.table} ที่นั่ง ${g.seat}` : null).filter(Boolean).join(', ') || 'ตามที่ระบุในกลุ่ม'}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-xs text-rose-800 space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>การคุ้มครองข้อมูลและความปลอดภัย:</span>
+              </div>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] text-rose-700 pl-1">
+                <li>ลบข้อมูลการจองและรายการที่นั่งที่สัมพันธ์กันโดยใช้ธุรกรรมแบบ Atomic</li>
+                <li>คืนที่นั่งให้ว่าง และอัปเดตผังโต๊ะ จำนวนผู้จอง และยอดเงินทันที</li>
+                <li>บันทึกประวัติลง Audit Log พร้อมข้อมูลเจ้าหน้าที่ผู้ดำเนินการและเวลา</li>
+                <li>ไม่ลบหรือกระทบข้อมูลของผู้จองรายอื่นในระบบ</li>
+              </ul>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-semibold text-slate-700">
+                พิมพ์คำว่า <span className="text-rose-600 font-bold font-mono">ยืนยันลบ</span> เพื่อยืนยันการลบ:
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={e => setDeleteConfirmText(e.target.value)}
+                placeholder="พิมพ์ 'ยืนยันลบ'"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-rose-500 outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingReservation(null)}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                disabled={deleteConfirmText.trim() !== 'ยืนยันลบ' || isDeleting}
+                onClick={handleExecuteDelete}
+                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                {isDeleting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>{isDeleting ? 'กำลังลบจากเซิร์ฟเวอร์...' : 'ยืนยันการลบถาวร'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

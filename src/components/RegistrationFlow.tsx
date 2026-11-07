@@ -19,7 +19,9 @@ import {
   Clock,
   X,
   ShieldCheck,
-  FileCheck
+  FileCheck,
+  FlaskConical,
+  FileText
 } from 'lucide-react';
 import {
   GuestInfo,
@@ -34,7 +36,7 @@ import { KKUNursingLogo } from './KKUNursingLogo';
 import { ChineseBanquetTable } from './ChineseBanquetTable';
 import { EmailTicketModal } from './EmailTicketModal';
 import { DigitalPassCard } from './DigitalPassCard';
-import { generateRealisticSlipDataUrl } from '../utils/slipGenerator';
+import { uploadPaymentDocument } from '../bookingApi';
 
 interface RegistrationFlowProps {
   existingSeats: ExistingSeat[];
@@ -42,6 +44,8 @@ interface RegistrationFlowProps {
   seatsReady: boolean;
   onViewAdmin: () => void;
   onViewFloorPlan: () => void;
+  isTestMode?: boolean;
+  onExitTestMode?: () => void;
 }
 
 const TICKET_PRICE = 799;
@@ -51,7 +55,9 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   onSaveReservation,
   seatsReady,
   onViewAdmin,
-  onViewFloorPlan
+  onViewFloorPlan,
+  isTestMode = false,
+  onExitTestMode
 }) => {
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -257,33 +263,49 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       };
     });
 
-    const effectiveSlipUrl = slipPreview || generateRealisticSlipDataUrl({
-      payerName: bookerName,
-      amount: guestCount * TICKET_PRICE,
-      timestamp
-    });
-
-    const record: ReservationRecord = {
-      id: reservationId,
-      mainBooker: bookerName,
-      phone,
-      email,
-      category,
-      academicYear,
-      guestCount,
-      guests: updatedGuests,
-      assignments,
-      totalAmount: guestCount * TICKET_PRICE,
-      slipFileName: slipFile?.name || 'slip.jpg',
-      slipUrl: effectiveSlipUrl,
-      slipTimestamp: timestamp,
-      status: 'pending', // Waiting for staff approval
-      createdAt: timestamp
-    };
-
     setSaving(true);
     try {
-      await onSaveReservation(record);
+      let finalSlipUrl = '';
+      let finalSlipFileName = slipFile?.name || 'slip.jpg';
+
+      if (isTestMode) {
+        // Simulation mode: keep local preview, do NOT call Supabase Storage or Database
+        finalSlipUrl = slipPreview || '';
+      } else {
+        // Real upload to Supabase Storage Private 'payment-slips' bucket
+        if (slipFile) {
+          try {
+            const uploadRes = await uploadPaymentDocument(slipFile, reservationId);
+            finalSlipUrl = uploadRes.path;
+            finalSlipFileName = uploadRes.fileName;
+          } catch (uploadErr: any) {
+            console.error('Storage upload failed:', uploadErr);
+            throw new Error(`ไม่สามารถอัปโหลดไฟล์หลักฐานไปยัง Supabase Storage ได้ (${uploadErr.message || 'Storage error'})\nกรุณาตรวจสอบว่าได้สร้าง bucket "payment-slips" ใน Supabase เรียบร้อยแล้ว`);
+          }
+        }
+      }
+
+      const record: ReservationRecord = {
+        id: reservationId,
+        mainBooker: bookerName,
+        phone,
+        email,
+        category,
+        academicYear,
+        guestCount,
+        guests: updatedGuests,
+        assignments,
+        totalAmount: guestCount * TICKET_PRICE,
+        slipFileName: finalSlipFileName,
+        slipUrl: finalSlipUrl,
+        slipTimestamp: timestamp,
+        status: 'pending', // Waiting for staff approval
+        createdAt: timestamp
+      };
+
+      if (!isTestMode) {
+        await onSaveReservation(record);
+      }
       setConfirmedReservation(record);
       setCurrentStep(4);
     } catch (error) {
@@ -304,6 +326,36 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto mb-16">
+      {/* Simulation Banner for Staff Test Mode */}
+      {isTestMode && (
+        <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 text-slate-950 shadow-xl border-2 border-amber-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-950 text-amber-400 flex items-center justify-center shrink-0">
+              <FlaskConical className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <div className="font-extrabold text-sm sm:text-base flex items-center gap-2">
+                <span>โหมดทดสอบ — ไม่ใช่การจองจริง (SIMULATION MODE)</span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-slate-950 text-amber-300 font-mono">STAFF ONLY</span>
+              </div>
+              <p className="text-xs text-slate-900/90 font-medium mt-0.5">
+                เจ้าหน้าที่กำลังทดสอบขั้นตอนการจอง: ระบบจะไม่บันทึกลงฐานข้อมูลจริง ไม่ล็อกที่นั่งจริง และไม่ตัดสิทธิ์ผู้จองจริง
+              </p>
+            </div>
+          </div>
+          {onExitTestMode && (
+            <button
+              type="button"
+              onClick={onExitTestMode}
+              className="px-4 py-2 bg-slate-950 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition-colors shrink-0 shadow flex items-center gap-1.5 cursor-pointer"
+            >
+              <X className="w-4 h-4 text-amber-400" />
+              <span>ออกจากโหมดทดสอบ</span>
+            </button>
+          )}
+        </div>
+      )}
+
       {/* 4-Step Progress Indicators */}
       <div className="no-print bg-slate-900/90 border border-amber-500/30 rounded-2xl p-4 sm:p-6 mb-8 shadow-xl backdrop-blur-sm">
         <div className="flex items-center justify-between max-w-3xl mx-auto">
@@ -641,20 +693,28 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                 <div className="relative border-2 border-dashed border-amber-300 hover:border-amber-500 rounded-3xl p-6 text-center bg-amber-50/30 transition-all">
                   {slipPreview ? (
                     <div className="space-y-3">
-                      <img
-                        src={slipPreview}
-                        alt="สลิปโอนเงิน"
-                        className="max-h-56 mx-auto rounded-xl shadow-md border border-slate-200 object-contain"
-                      />
+                      {slipFile?.type === 'application/pdf' || slipFile?.name?.toLowerCase().endsWith('.pdf') ? (
+                        <div className="max-h-56 mx-auto rounded-2xl p-6 bg-red-50/80 border border-red-200 flex flex-col items-center justify-center text-red-700">
+                          <FileText className="w-16 h-16 text-red-600 mb-2" />
+                          <span className="font-bold text-sm text-slate-800">{slipFile.name}</span>
+                          <span className="text-xs text-slate-500 mt-1">เอกสาร PDF ({(slipFile.size / 1024).toFixed(1)} KB)</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={slipPreview}
+                          alt="สลิปโอนเงิน"
+                          className="max-h-56 mx-auto rounded-xl shadow-md border border-slate-200 object-contain"
+                        />
+                      )}
                       <div className="text-xs text-emerald-700 font-semibold flex items-center justify-center gap-1">
                         <CheckCircle2 className="w-4 h-4" />
-                        <span>แนบสลิปเรียบร้อยแล้ว: {slipFile?.name || 'slip.jpg'}</span>
+                        <span>แนบเอกสารเรียบร้อยแล้ว: {slipFile?.name || 'slip.jpg'}</span>
                       </div>
                       <label className="inline-block text-xs text-amber-700 underline cursor-pointer hover:text-amber-900">
-                        <span>เปลี่ยนรูปสลิป</span>
+                        <span>เปลี่ยนเอกสาร</span>
                         <input
                           type="file"
-                          accept="image/*,.pdf"
+                          accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,image/jpg,application/pdf"
                           onChange={handleFileUpload}
                           className="hidden"
                         />
@@ -669,13 +729,13 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                         <p className="text-sm font-semibold text-slate-800">
                           ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์
                         </p>
-                        <p className="text-xs text-slate-500 mt-1">รองรับ JPG, PNG, PDF ขนาดไม่เกิน 10MB</p>
+                        <p className="text-xs text-slate-500 mt-1">รองรับเอกสาร PDF และไฟล์รูปภาพ JPG, JPEG, PNG (ไม่เกิน 10MB)</p>
                       </div>
                       <label className="inline-block px-4 py-2 bg-white text-slate-700 border border-slate-300 rounded-xl text-xs font-semibold cursor-pointer hover:bg-slate-50 shadow-sm transition-all">
                         <span>เลือกไฟล์จากเครื่อง</span>
                         <input
                           type="file"
-                          accept="image/*,.pdf"
+                          accept=".pdf,.jpg,.jpeg,.png,image/jpeg,image/png,image/jpg,application/pdf"
                           onChange={handleFileUpload}
                           className="hidden"
                         />
@@ -1340,14 +1400,14 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
         />
       )}
 
-      {/* Lightbox Modal: View Uploaded Slip in High Resolution */}
+      {/* Lightbox Modal: View Uploaded Document / Slip (Image or PDF) */}
       {previewModalSlipUrl && (
         <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-3xl max-w-xl w-full border border-amber-500/40 p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+          <div className="bg-slate-900 rounded-3xl max-w-3xl w-full border border-amber-500/40 p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
               <span className="text-sm font-bold text-amber-200 flex items-center gap-2">
                 <FileCheck className="w-4 h-4 text-amber-400" />
-                <span>หลักฐานการโอนเงินที่แนบมา (สลิปโอนเงิน)</span>
+                <span>หลักฐานการโอนเงินที่แนบมา ({slipFile?.name || 'เอกสารแนบ'})</span>
               </span>
               <button
                 type="button"
@@ -1358,14 +1418,31 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               </button>
             </div>
             <div className="py-4 flex justify-center">
-              <img
-                src={previewModalSlipUrl}
-                alt="สลิปโอนเงิน"
-                className="max-h-[70vh] rounded-2xl border border-slate-700 shadow-xl object-contain bg-white"
-              />
+              {slipFile?.type === 'application/pdf' || slipFile?.name?.toLowerCase().endsWith('.pdf') || previewModalSlipUrl.includes('.pdf') ? (
+                <iframe
+                  src={previewModalSlipUrl}
+                  title="PDF Preview"
+                  className="w-full h-[65vh] rounded-2xl border border-slate-700 bg-white"
+                />
+              ) : (
+                <img
+                  src={previewModalSlipUrl}
+                  alt="สลิปโอนเงิน"
+                  className="max-h-[70vh] rounded-2xl border border-slate-700 shadow-xl object-contain bg-white"
+                />
+              )}
             </div>
-            <div className="pt-2 text-center text-xs text-slate-400">
-              หลักฐานสลิปสำหรับตรวจสอบยอดโอน 799 บ./ท่าน
+            <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
+              <span>หลักฐานสลิปสำหรับตรวจสอบยอดโอน 799 บ./ท่าน</span>
+              <a
+                href={previewModalSlipUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-amber-400 hover:underline flex items-center gap-1"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>เปิดแท็บใหม่ / ดาวน์โหลด</span>
+              </a>
             </div>
           </div>
         </div>

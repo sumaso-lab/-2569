@@ -129,42 +129,49 @@ export function generateOfficialVoucherSvg(res: ReservationRecord): string {
  * Returns all attached documents for any reservation.
  * Guarantees every booking has at least its payment slip and official booking voucher.
  */
+/**
+ * Returns all attached documents for any reservation.
+ * Strictly adheres to rule: If there is no real file in Storage/DB, mark as missing file and DO NOT create fake slips.
+ */
 export function getReservationDocuments(res: ReservationRecord): AttachedDocument[] {
   if (res.attachedDocuments && res.attachedDocuments.length > 0) {
     return res.attachedDocuments;
   }
 
-  const timestamp = res.slipTimestamp || res.createdAt || '20 ธ.ค. 2569 14:00 น.';
-  const slipUrl = res.slipUrl || generateRealisticSlipDataUrl({
-    bank: (res.id.charCodeAt(0) % 2 === 0) ? 'SCB' : 'KBANK',
-    bookerName: res.mainBooker,
-    amount: (res.guestCount || 1) * 799,
-    refId: `REF-${res.id.slice(-6).toUpperCase()}`,
-    dateStr: timestamp
+  const timestamp = res.slipTimestamp || res.createdAt || 'บันทึกในระบบ';
+  const hasRealSlip = Boolean(res.slipUrl && res.slipUrl.trim().length > 0);
+  const slipFileName = res.slipFileName || 'หลักฐานการโอนเงิน';
+  const isPdf = slipFileName.toLowerCase().endsWith('.pdf') || (res.slipUrl && res.slipUrl.toLowerCase().includes('.pdf'));
+
+  const docs: AttachedDocument[] = [];
+
+  // Document 1: Real payment slip (or explicit missing indicator)
+  docs.push({
+    id: `${res.id}-doc-slip`,
+    name: hasRealSlip ? `หลักฐานการโอนเงิน (${slipFileName})` : 'หลักฐานการโอนเงิน (ไม่พบไฟล์ใน Storage)',
+    type: 'slip',
+    url: hasRealSlip ? res.slipUrl! : '',
+    uploadedAt: timestamp,
+    size: hasRealSlip ? 'ต้นฉบับ' : '0 B',
+    status: res.status,
+    hasRealFile: hasRealSlip,
+    mimeType: isPdf ? 'application/pdf' : 'image/jpeg',
+    storagePath: hasRealSlip ? res.slipUrl : undefined
   });
 
+  // Document 2: Official System Booking Voucher (Generated on demand for staff reference)
   const voucherUrl = generateOfficialVoucherSvg(res);
-
-  const docs: AttachedDocument[] = [
-    {
-      id: `${res.id}-doc-slip`,
-      name: `สลิปโอนเงินธนาคาร (${(res.id.charCodeAt(0) % 2 === 0) ? 'SCB EASY' : 'K PLUS'})`,
-      type: 'slip',
-      url: slipUrl,
-      uploadedAt: timestamp,
-      size: '185 KB',
-      status: res.status
-    },
-    {
-      id: `${res.id}-doc-voucher`,
-      name: `หนังสือยืนยันการลงทะเบียน & สำรองผังที่นั่ง (${res.id})`,
-      type: 'voucher',
-      url: voucherUrl,
-      uploadedAt: res.createdAt || timestamp,
-      size: '240 KB',
-      status: res.status
-    }
-  ];
+  docs.push({
+    id: `${res.id}-doc-voucher`,
+    name: `หนังสือยืนยันการลงทะเบียน & สำรองผังที่นั่ง (${res.id})`,
+    type: 'voucher',
+    url: voucherUrl,
+    uploadedAt: res.createdAt || timestamp,
+    size: '240 KB',
+    status: res.status,
+    hasRealFile: true,
+    mimeType: 'image/svg+xml'
+  });
 
   return docs;
 }

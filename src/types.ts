@@ -45,6 +45,9 @@ export interface AttachedDocument {
   uploadedAt: string;
   size?: string;
   status?: 'verified' | 'pending' | 'rejected';
+  hasRealFile?: boolean;
+  mimeType?: string;
+  storagePath?: string;
 }
 
 export interface ReservationRecord {
