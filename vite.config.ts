@@ -18,6 +18,16 @@ export default defineConfig(({ command }) => {
       hmr: process.env.DISABLE_HMR !== 'true',
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: process.env.DISABLE_HMR === 'true' ? null : {},
+      proxy: {
+        '/supabase-functions': {
+          target: 'https://xvmnouioezqxcomughci.supabase.co/functions/v1',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/supabase-functions/, ''),
+          headers: {
+            Origin: 'https://sumaso-lab.github.io',
+          },
+        },
+      },
     },
   };
 });

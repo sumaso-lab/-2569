@@ -24,7 +24,9 @@ import {
   PhoneCall,
   LayoutGrid,
   Mail,
-  Clock
+  Clock,
+  FlaskConical,
+  ExternalLink
 } from 'lucide-react';
 import { ExistingSeat, ReservationRecord, AttendeeCategory, GuestInfo } from '../types';
 import {
@@ -41,6 +43,7 @@ import {
   sendImmediateApprovalEmail,
   EmailDispatchRecord
 } from '../utils/emailService';
+import { generateRealisticSlipDataUrl } from '../utils/slipGenerator';
 
 interface AdminConsoleProps {
   existingSeats: ExistingSeat[];
@@ -95,8 +98,30 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
 
   // Modal States
   const [selectedTicketSeat, setSelectedTicketSeat] = useState<ExistingSeat | null>(null);
-  const [previewSlipUrl, setPreviewSlipUrl] = useState<{ url: string; title: string } | null>(null);
+  const [previewSlipUrl, setPreviewSlipUrl] = useState<{ url: string; title: string; reservation?: ReservationRecord } | null>(null);
   const [emailModalSeat, setEmailModalSeat] = useState<ExistingSeat | null>(null);
+
+  // Staff Test Cases in Sandbox (Persisted in localStorage for convenience)
+  const [testCases, setTestCases] = useState<ReservationRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('grad69_staff_test_cases_v3');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error(e);
+    }
+    return [];
+  });
+
+  const saveTestCases = (newCases: ReservationRecord[]) => {
+    setTestCases(newCases);
+    localStorage.setItem('grad69_staff_test_cases_v3', JSON.stringify(newCases));
+  };
+
+  // Merge Test Cases with actual reservations (Test cases prioritized at top)
+  const allReservations: ReservationRecord[] = [
+    ...testCases,
+    ...reservations.filter(r => !testCases.some(tc => tc.id === r.id))
+  ];
 
   // 1. Edit Single Seat / Attendee Modal State
   const [editingSeat, setEditingSeat] = useState<ExistingSeat | null>(null);
@@ -147,7 +172,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   const totalOccupied = existingSeats.length;
   const checkedInCount = existingSeats.filter(s => s.checkedIn).length;
   const totalRevenue = totalOccupied * TICKET_PRICE;
-  const pendingSlipsCount = reservations.filter(r => r.status === 'pending').length;
+  const pendingSlipsCount = allReservations.filter(r => r.status === 'pending').length;
 
   // Handle Passcode Login
   const handleLogin = (e?: React.FormEvent) => {
@@ -468,7 +493,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   });
 
   // Filtered Slips
-  const filteredReservations = reservations.filter(r => {
+  const filteredReservations = allReservations.filter(r => {
     if (slipFilter !== 'all' && r.status !== slipFilter) return false;
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
@@ -481,6 +506,205 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
     }
     return true;
   });
+
+  // Handle Staff Test Cases
+  const handleAddTestCase = (type: 'pending_single' | 'pending_multi' | 'verified_single') => {
+    const timestamp = new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' });
+    let newCase: ReservationRecord;
+
+    if (type === 'pending_single') {
+      const id = `TEST-P1-${Date.now().toString().slice(-4)}`;
+      newCase = {
+        id,
+        mainBooker: 'พว. ชลธิชา วงศ์สุวรรณ',
+        phone: '089-456-7890',
+        email: 'cholticha.w@kku.ac.th',
+        category: 'graduate',
+        academicYear: '2569',
+        guestCount: 1,
+        totalAmount: 799,
+        guests: [
+          {
+            id: `${id}-g1`,
+            name: 'พว. ชลธิชา วงศ์สุวรรณ',
+            category: 'graduate',
+            phone: '089-456-7890',
+            email: 'cholticha.w@kku.ac.th',
+            table: 3,
+            seat: 4,
+            ticketCode: `GRAD69-T03S04-${Math.floor(10 + Math.random() * 90)}`
+          }
+        ],
+        assignments: { 0: { table: 3, seat: 4 } },
+        status: 'pending',
+        slipUrl: generateRealisticSlipDataUrl({
+          bank: 'SCB',
+          bookerName: 'พว. ชลธิชา วงศ์สุวรรณ',
+          amount: 799,
+          refId: `SCB${Math.floor(100000000000 + Math.random() * 900000000000)}`,
+          dateStr: timestamp
+        }),
+        slipTimestamp: timestamp,
+        createdAt: timestamp,
+        notes: 'เคสทดสอบเจ้าหน้าที่: บัณฑิตพยาบาล 1 ที่นั่ง รอตรวจสลิป'
+      };
+    } else if (type === 'pending_multi') {
+      const id = `TEST-P3-${Date.now().toString().slice(-4)}`;
+      newCase = {
+        id,
+        mainBooker: 'ดร. กิตติพงษ์ เกียรติชัย',
+        phone: '081-789-0123',
+        email: 'kittipong.k@kku.ac.th',
+        category: 'faculty',
+        academicYear: '2569',
+        guestCount: 3,
+        totalAmount: 2397,
+        guests: [
+          {
+            id: `${id}-g1`,
+            name: 'ดร. กิตติพงษ์ เกียรติชัย',
+            category: 'faculty',
+            phone: '081-789-0123',
+            email: 'kittipong.k@kku.ac.th',
+            table: 5,
+            seat: 1,
+            ticketCode: `GRAD69-T05S01-${Math.floor(10 + Math.random() * 90)}`
+          },
+          {
+            id: `${id}-g2`,
+            name: 'นาง วรินทร เกียรติชัย',
+            category: 'guest',
+            table: 5,
+            seat: 2,
+            ticketCode: `GRAD69-T05S02-${Math.floor(10 + Math.random() * 90)}`
+          },
+          {
+            id: `${id}-g3`,
+            name: 'นาย ธนภูมิ เกียรติชัย',
+            category: 'guest',
+            table: 5,
+            seat: 3,
+            ticketCode: `GRAD69-T05S03-${Math.floor(10 + Math.random() * 90)}`
+          }
+        ],
+        assignments: {
+          0: { table: 5, seat: 1 },
+          1: { table: 5, seat: 2 },
+          2: { table: 5, seat: 3 }
+        },
+        status: 'pending',
+        slipUrl: generateRealisticSlipDataUrl({
+          bank: 'KBANK',
+          bookerName: 'ดร. กิตติพงษ์ เกียรติชัย',
+          amount: 2397,
+          refId: `KBANK${Math.floor(10000000000 + Math.random() * 90000000000)}`,
+          dateStr: timestamp
+        }),
+        slipTimestamp: timestamp,
+        createdAt: timestamp,
+        notes: 'เคสทดสอบเจ้าหน้าที่: อาจารย์และครอบครัว 3 ที่นั่ง รอตรวจสลิป'
+      };
+    } else {
+      const id = `TEST-V1-${Date.now().toString().slice(-4)}`;
+      const ticketCode = `GRAD69-T07S05-${Math.floor(10 + Math.random() * 90)}`;
+      newCase = {
+        id,
+        mainBooker: 'พว. ภัทรพล สิทธิโชค',
+        phone: '086-333-7788',
+        email: 'pattarapol.s@kku.ac.th',
+        category: 'graduate',
+        academicYear: '2569',
+        guestCount: 1,
+        totalAmount: 799,
+        guests: [
+          {
+            id: `${id}-g1`,
+            name: 'พว. ภัทรพล สิทธิโชค',
+            category: 'graduate',
+            phone: '086-333-7788',
+            email: 'pattarapol.s@kku.ac.th',
+            table: 7,
+            seat: 5,
+            ticketCode
+          }
+        ],
+        assignments: { 0: { table: 7, seat: 5 } },
+        status: 'verified',
+        slipUrl: generateRealisticSlipDataUrl({
+          bank: 'SCB',
+          bookerName: 'พว. ภัทรพล สิทธิโชค',
+          amount: 799,
+          refId: `SCB${Math.floor(100000000000 + Math.random() * 900000000000)}`,
+          dateStr: timestamp
+        }),
+        slipTimestamp: timestamp,
+        createdAt: timestamp,
+      };
+
+      if (onAddManualSeat) {
+        onAddManualSeat({
+          table: 7,
+          seat: 5,
+          guestName: 'พว. ภัทรพล สิทธิโชค',
+          category: 'graduate',
+          phone: '086-333-7788',
+          email: 'pattarapol.s@kku.ac.th',
+          ticketCode,
+          checkedIn: false
+        });
+      }
+    }
+
+    const updated = [newCase, ...testCases];
+    saveTestCases(updated);
+    alert(`✓ เพิ่มเคสทดสอบ ${newCase.id} (${newCase.mainBooker}) เรียบร้อยแล้ว!`);
+  };
+
+  const handleClearTestCases = () => {
+    if (window.confirm('ต้องการล้างเคสทดสอบของเจ้าหน้าที่ทั้งหมดหรือไม่?')) {
+      saveTestCases([]);
+    }
+  };
+
+  // Staff Approval & Ticket Generation Handler
+  const handleApproveReservation = (res: ReservationRecord) => {
+    // 1. Update in parent
+    if (onUpdateReservationStatus) {
+      onUpdateReservationStatus(res.id, 'verified');
+    }
+    if (onUpdateReservation) {
+      onUpdateReservation({ ...res, status: 'verified' });
+    }
+    // 2. Update if in testCases
+    if (testCases.some(tc => tc.id === res.id)) {
+      const updated = testCases.map(tc => tc.id === res.id ? { ...tc, status: 'verified' as const } : tc);
+      saveTestCases(updated);
+    }
+    // 3. Register seats to existingSeats so QR check-in and floor plan see them
+    if (onAddManualSeat && res.guests && res.guests.length > 0) {
+      res.guests.forEach((g, idx) => {
+        const table = g.table || (res.assignments && res.assignments[idx]?.table);
+        const seat = g.seat || (res.assignments && res.assignments[idx]?.seat);
+        if (table && seat) {
+          const code = g.ticketCode || `GRAD69-T${String(table).padStart(2, '0')}S${String(seat).padStart(2, '0')}`;
+          onAddManualSeat({
+            table,
+            seat,
+            guestName: g.name,
+            category: g.category,
+            phone: g.phone || res.phone,
+            email: g.email || res.email,
+            ticketCode: code,
+            checkedIn: false
+          });
+        }
+      });
+    }
+    // 4. Send immediate approval email
+    sendImmediateApprovalEmail(res);
+    setEmailLogs(getEmailDispatchLogs());
+    alert(`✓ อนุมัติสลิปและออกบัตรดิจิทัลเรียบร้อยแล้ว!\nระบบได้จำลองส่งอีเมลบัตรเข้างานพร้อม QR Code ไปยัง ${res.email || 'ผู้ร่วมงาน'} ทันที`);
+  };
 
   // Export CSV
   const handleExportCSV = () => {
@@ -827,13 +1051,99 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
       {/* ================= TAB 1: SLIPS & RESERVATION EDIT ================= */}
       {activeTab === 'slips' && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-amber-500/20 shadow-xl space-y-6">
+          {/* Staff Test Sandbox Panel */}
+          <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-indigo-950 border-2 border-amber-400/60 shadow-xl text-white space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-400/50 flex items-center justify-center text-amber-400 shrink-0">
+                  <FlaskConical className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-bold text-amber-300 text-sm sm:text-base flex items-center gap-2">
+                    <span>🧪 ปุ่มทดสอบเคสสำหรับเจ้าหน้าที่</span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-400 text-slate-950 font-extrabold uppercase">
+                      Staff Test Sandbox
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-300 mt-0.5">
+                    คลิกเพื่อจำลองการจองและสลิปจริงความละเอียดสูงสำหรับทดสอบตรวจสอบ, อนุมัติออกบัตร, และสแกน QR Code Check-in
+                  </p>
+                </div>
+              </div>
+
+              {testCases.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearTestCases}
+                  className="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-700/60 rounded-xl text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto cursor-pointer transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>ล้างเคสทดสอบ ({testCases.length})</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => handleAddTestCase('pending_single')}
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 border border-amber-500/40 hover:border-amber-400 text-left transition-all group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-amber-400">เคสที่ 1 · 1 ที่นั่ง (799฿)</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-semibold border border-amber-700/50">รอตรวจ</span>
+                </div>
+                <div className="font-semibold text-xs text-slate-200 group-hover:text-amber-200">
+                  พว. ชลธิชา (สลิป SCB)
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  โต๊ะ 3 ที่นั่ง 4 · มีสลิปพร้อมเปิดดู
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAddTestCase('pending_multi')}
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 border border-sky-500/40 hover:border-sky-400 text-left transition-all group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-sky-400">เคสที่ 2 · 3 ที่นั่ง (2,397฿)</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 text-amber-300 font-semibold border border-amber-700/50">รอตรวจ</span>
+                </div>
+                <div className="font-semibold text-xs text-slate-200 group-hover:text-sky-200">
+                  ดร. กิตติพงษ์ (สลิป KBANK)
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  โต๊ะ 5 ที่นั่ง 1-3 · กลุ่ม 3 ท่าน
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleAddTestCase('verified_single')}
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 border border-emerald-500/40 hover:border-emerald-400 text-left transition-all group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-emerald-400">เคสที่ 3 · อนุมัติแล้ว (799฿)</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-semibold border border-emerald-700/50">บัตรพร้อม</span>
+                </div>
+                <div className="font-semibold text-xs text-slate-200 group-hover:text-emerald-200">
+                  พว. ภัทรพล (พร้อมสแกน)
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  โต๊ะ 7 ที่นั่ง 5 · ทดสอบ Check-in ทันที
+                </div>
+              </button>
+            </div>
+          </div>
+
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-slate-100">
             <div>
               <h3 className="font-serif-thai text-xl font-bold text-slate-900">
                 คิวตรวจสอบสลิปโอนเงินและการจอง ({filteredReservations.length} รายการ)
               </h3>
               <p className="text-xs text-slate-500 mt-1">
-                เจ้าหน้าที่สามารถตรวจสอบสลิป, อนุมัติสิทธิ์เลือกที่นั่ง, แก้ไขข้อมูลผู้จองทั้งหมด, หรือจัดที่นั่งให้ได้ทันที
+                เจ้าหน้าที่สามารถเปิดดูสลิปความละเอียดสูง, อนุมัติสิทธิ์ออกบัตรดิจิทัล, แก้ไขข้อมูลผู้จองทั้งหมด, หรือจัดที่นั่งให้ได้ทันที
               </p>
             </div>
 
@@ -869,6 +1179,14 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
             ) : (
               filteredReservations.map(res => {
                 const hasAssignedSeats = res.assignments && Object.keys(res.assignments).length > 0;
+                const slipSource = res.slipUrl || generateRealisticSlipDataUrl({
+                  bank: (res.id.charCodeAt(0) % 2 === 0) ? 'SCB' : 'KBANK',
+                  bookerName: res.mainBooker,
+                  amount: (res.guestCount || 1) * TICKET_PRICE,
+                  refId: `REF-${res.id.slice(-6).toUpperCase()}`,
+                  dateStr: res.slipTimestamp || res.createdAt || '20 ธ.ค. 2569 14:00 น.'
+                });
+
                 return (
                   <div
                     key={res.id}
@@ -881,27 +1199,27 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                     }`}
                   >
                     <div className="flex items-start gap-4">
-                      {/* Thumbnail of slip */}
-                      {res.slipUrl ? (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewSlipUrl({ url: res.slipUrl!, title: `สลิปของ ${res.mainBooker}` })}
-                          className="w-20 h-24 rounded-xl overflow-hidden border border-slate-300 shadow-sm shrink-0 bg-slate-100 hover:opacity-90 relative group cursor-pointer"
-                        >
-                          <img
-                            src={res.slipUrl}
-                            alt="สลิป"
-                            className="w-full h-full object-cover"
-                          />
-                          <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] transition-opacity font-semibold">
-                            <Eye className="w-4 h-4 mr-1" /> ดูเต็มจอ
-                          </div>
-                        </button>
-                      ) : (
-                        <div className="w-20 h-24 rounded-xl border border-slate-200 bg-slate-100 flex items-center justify-center text-slate-400 text-xs shrink-0">
-                          ไม่มีภาพสลิป
+                      {/* Thumbnail of slip (Always viewable!) */}
+                      <button
+                        type="button"
+                        onClick={() => setPreviewSlipUrl({
+                          url: slipSource,
+                          title: `สลิปโอนเงิน: ${res.mainBooker} (ยอด ${(res.guestCount * TICKET_PRICE).toLocaleString()} บ.)`,
+                          reservation: res
+                        })}
+                        className="w-20 h-26 rounded-xl overflow-hidden border-2 border-amber-400/50 shadow-md shrink-0 bg-slate-900 hover:opacity-90 relative group cursor-pointer"
+                        title="คลิกเพื่อเปิดดูสลิปความละเอียดสูง"
+                      >
+                        <img
+                          src={slipSource}
+                          alt="สลิปโอนเงิน"
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] transition-opacity font-semibold p-1 text-center">
+                          <Eye className="w-4 h-4 text-amber-400 mb-0.5" />
+                          <span>เปิดดูสลิป</span>
                         </div>
-                      )}
+                      </button>
 
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
@@ -954,25 +1272,23 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
 
                     {/* Actions for this Slip / Reservation (ช่อง ระบบเจ้าหน้าที่ ตรวจสอบ · อนุมัติ · เเก้ไข) */}
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
-                      {res.slipUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setPreviewSlipUrl({ url: res.slipUrl!, title: `ตรวจสลิป: ${res.mainBooker} (ยอด ${(res.guestCount * TICKET_PRICE).toLocaleString()} บ.)` })}
-                          className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-amber-600" />
-                          <span>1. ตรวจสอบสลิป</span>
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => setPreviewSlipUrl({
+                          url: slipSource,
+                          title: `ตรวจสลิป: ${res.mainBooker} (ยอด ${(res.guestCount * TICKET_PRICE).toLocaleString()} บ.)`,
+                          reservation: res
+                        })}
+                        className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-slate-950" />
+                        <span>1. ตรวจสอบสลิปจริง</span>
+                      </button>
 
                       {res.status !== 'verified' ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (onUpdateReservationStatus) {
-                              onUpdateReservationStatus(res.id, 'verified');
-                            }
-                          }}
+                          onClick={() => handleApproveReservation(res)}
                           className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <Check className="w-4 h-4" />
@@ -989,7 +1305,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                             onClick={() => {
                               trigger24hReminderEmail(res);
                               setEmailLogs(getEmailDispatchLogs());
-                              alert(`✓ จำลองส่งอีเมลแจ้งเตือนล่วงหน้า 24 ชม. ไปยัง ${res.email} สำเร็จเรียบร้อยแล้ว!\nกำหนดการจริง: 20 ธ.ค. 2569 เวลา 16:30 น.`);
+                              alert(`✓ จำลองส่งอีเมลแจ้งเตือนล่วงหน้า 24 ชม. ไปยัง ${res.email || 'ผู้จอง'} สำเร็จเรียบร้อยแล้ว!\nกำหนดการจริง: 20 ธ.ค. 2569 เวลา 16:30 น.`);
                             }}
                             className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                             title="ทดสอบจำลองส่งอีเมลแจ้งเตือนก่อนงาน 24 ชม. ไปยังผู้จอง"
@@ -2473,28 +2789,156 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
         </div>
       )}
 
-      {/* ================= MODAL: FULLSCREEN SLIP PREVIEW ================= */}
+      {/* ================= MODAL: FULLSCREEN REAL SLIP VIEWER & VERIFICATION ================= */}
       {previewSlipUrl && (
-        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 rounded-3xl max-w-xl w-full border border-amber-500/40 p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-900 rounded-3xl max-w-3xl w-full border-2 border-amber-500/40 p-6 shadow-2xl relative my-auto space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-              <span className="text-sm font-bold text-amber-200">
-                {previewSlipUrl.title}
-              </span>
+              <div className="flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-bold text-amber-200 font-serif-thai">
+                  {previewSlipUrl.title}
+                </h3>
+              </div>
               <button
                 type="button"
                 onClick={() => setPreviewSlipUrl(null)}
-                className="p-1 rounded-full text-slate-400 hover:text-white"
+                className="p-1.5 rounded-full text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="py-4 flex justify-center">
-              <img
-                src={previewSlipUrl.url}
-                alt="สลิปโอนเงิน"
-                className="max-h-[70vh] rounded-2xl border border-slate-700 shadow-xl object-contain"
-              />
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+              {/* Left: The Real Slip Image */}
+              <div className="flex flex-col items-center justify-center bg-slate-950/70 p-4 rounded-2xl border border-slate-800">
+                <img
+                  src={previewSlipUrl.url}
+                  alt="สลิปโอนเงินความละเอียดสูง"
+                  className="max-h-[58vh] w-auto rounded-xl shadow-2xl object-contain border border-slate-700"
+                />
+                <div className="mt-3 flex items-center gap-2">
+                  <a
+                    href={previewSlipUrl.url}
+                    download={`slip_${Date.now()}.svg`}
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5 text-amber-400" />
+                    <span>ดาวน์โหลดสลิป</span>
+                  </a>
+                  <a
+                    href={previewSlipUrl.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                    <span>เปิดแท็บใหม่</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Right: Verification Details & Action Buttons */}
+              <div className="space-y-4 text-xs text-slate-300">
+                <div className="bg-slate-800/80 p-4 rounded-2xl border border-slate-700/80 space-y-2.5">
+                  <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider block">
+                    ข้อมูลตรวจสอบการชำระเงิน
+                  </span>
+                  
+                  {previewSlipUrl.reservation && (
+                    <>
+                      <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                        <span className="text-slate-400">รหัสจอง:</span>
+                        <span className="font-mono font-bold text-amber-300">{previewSlipUrl.reservation.id}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                        <span className="text-slate-400">ผู้โอนเงิน:</span>
+                        <span className="font-semibold text-white">{previewSlipUrl.reservation.mainBooker}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                        <span className="text-slate-400">เบอร์โทรศัพท์:</span>
+                        <span className="text-white">{previewSlipUrl.reservation.phone}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                        <span className="text-slate-400">อีเมลรับบัตร:</span>
+                        <span className="text-white">{previewSlipUrl.reservation.email || '-'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                        <span className="text-slate-400">จำนวนที่นั่ง:</span>
+                        <span className="font-bold text-white">{previewSlipUrl.reservation.guestCount} ท่าน</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                        <span className="text-slate-400">ยอดเงินโอน:</span>
+                        <span className="font-bold text-amber-300 text-sm">
+                          {(previewSlipUrl.reservation.guestCount * TICKET_PRICE).toLocaleString()} บาท
+                        </span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-700 pb-1.5">
+                        <span className="text-slate-400">สถานะปัจจุบัน:</span>
+                        <span className={`font-bold px-2 py-0.5 rounded ${
+                          previewSlipUrl.reservation.status === 'verified'
+                            ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-500/40'
+                            : previewSlipUrl.reservation.status === 'pending'
+                            ? 'bg-amber-900/60 text-amber-300 border border-amber-500/40'
+                            : 'bg-rose-900/60 text-rose-300 border border-rose-500/40'
+                        }`}>
+                          {previewSlipUrl.reservation.status === 'verified'
+                            ? '✓ อนุมัติแล้ว'
+                            : previewSlipUrl.reservation.status === 'pending'
+                            ? '⏳ รอเจ้าหน้าที่ตรวจ'
+                            : '✕ ปฏิเสธ'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between pt-1">
+                        <span className="text-slate-400">ที่นั่งที่ระบุ:</span>
+                        <span className="text-amber-200 font-medium">
+                          {previewSlipUrl.reservation.guests?.map(g => g.table && g.seat ? `T${g.table}S${g.seat}` : null).filter(Boolean).join(', ') || 'ยังไม่ระบุ'}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Direct Action inside Modal */}
+                {previewSlipUrl.reservation && previewSlipUrl.reservation.status === 'pending' && (
+                  <div className="space-y-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleApproveReservation(previewSlipUrl.reservation!);
+                        setPreviewSlipUrl(null);
+                      }}
+                      className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center gap-2 cursor-pointer transition-all"
+                    >
+                      <Check className="w-5 h-5" />
+                      <span>อนุมัติสลิป & ออกบัตรดิจิทัลทันที</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reason = window.prompt('ระบุเหตุผลที่ปฏิเสธสลิป:', 'ยอดเงินไม่ถูกต้องหรือไม่พบข้อมูลการโอน');
+                        if (reason !== null) {
+                          if (onUpdateReservation) {
+                            onUpdateReservation({ ...previewSlipUrl.reservation!, status: 'rejected', rejectionReason: reason });
+                          } else if (onUpdateReservationStatus) {
+                            onUpdateReservationStatus(previewSlipUrl.reservation!.id, 'rejected');
+                          }
+                          setPreviewSlipUrl(null);
+                        }
+                      }}
+                      className="w-full py-2 bg-slate-800 hover:bg-rose-950 text-rose-400 border border-rose-800/40 font-semibold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-pointer transition-colors"
+                    >
+                      <span>ปฏิเสธสลิปนี้</span>
+                    </button>
+                  </div>
+                )}
+
+                {previewSlipUrl.reservation && previewSlipUrl.reservation.status === 'verified' && (
+                  <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-emerald-300 text-center font-semibold">
+                    ✓ สลิปนี้ได้รับการอนุมัติเรียบร้อยแล้ว บัตรดิจิทัลและอีเมลถูกจัดส่งแล้ว
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -18,7 +18,8 @@ import {
   getStoredReservations,
   saveReservationToStorage,
   getStoredExtraSeats,
-  saveExtraSeatToStorage
+  saveExtraSeatToStorage,
+  updateReservationStatusInStorage
 } from './data/initialData';
 import { Award, Heart, HelpCircle, PhoneCall, ShieldCheck } from 'lucide-react';
 import { fetchPublicSeats, createReservation, fetchAdminReservations } from './bookingApi';
@@ -132,6 +133,16 @@ const [isAdmin, setIsAdmin] = useState(false);
     }
   };
 
+  const handleUpdateReservationStatus = (id: string, status: 'verified' | 'pending' | 'rejected') => {
+    setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+    updateReservationStatusInStorage(id, status);
+  };
+
+  const handleAddManualSeat = (newSeat: ExistingSeat) => {
+    setExistingSeats(prev => [...prev.filter(s => !(s.table === newSeat.table && s.seat === newSeat.seat)), newSeat]);
+    saveExtraSeatToStorage(newSeat);
+  };
+
   const handleResetData = () => {
     window.alert('ไม่อนุญาตให้ลบข้อมูลการจองผ่านหน้าเว็บไซต์สาธารณะ');
   };
@@ -227,6 +238,8 @@ const [isAdmin, setIsAdmin] = useState(false);
       reservations={reservations}
       onToggleCheckIn={handleToggleCheckIn}
       onResetData={handleResetData}
+      onUpdateReservationStatus={handleUpdateReservationStatus}
+      onAddManualSeat={handleAddManualSeat}
     />
   ) : (
    <AdminLogin onSuccess={() => { setIsAdmin(true); void loadAdminReservations(); }} />

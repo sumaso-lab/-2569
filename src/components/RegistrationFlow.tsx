@@ -14,7 +14,12 @@ import {
   Sparkles,
   Mail,
   PhoneCall,
-  ExternalLink
+  ExternalLink,
+  Eye,
+  Clock,
+  X,
+  ShieldCheck,
+  FileCheck
 } from 'lucide-react';
 import {
   GuestInfo,
@@ -28,6 +33,8 @@ import { TABLES } from '../data/initialData';
 import { KKUNursingLogo } from './KKUNursingLogo';
 import { ChineseBanquetTable } from './ChineseBanquetTable';
 import { EmailTicketModal } from './EmailTicketModal';
+import { DigitalPassCard } from './DigitalPassCard';
+import { generateRealisticSlipDataUrl } from '../utils/slipGenerator';
 
 interface RegistrationFlowProps {
   existingSeats: ExistingSeat[];
@@ -77,6 +84,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
 
   // Completed reservation record
   const [confirmedReservation, setConfirmedReservation] = useState<ReservationRecord | null>(null);
+  const [previewModalSlipUrl, setPreviewModalSlipUrl] = useState<string | null>(null);
   const [emailModalGuest, setEmailModalGuest] = useState<{
     guestName: string;
     category: string;
@@ -249,6 +257,12 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       };
     });
 
+    const effectiveSlipUrl = slipPreview || generateRealisticSlipDataUrl({
+      payerName: bookerName,
+      amount: guestCount * TICKET_PRICE,
+      timestamp
+    });
+
     const record: ReservationRecord = {
       id: reservationId,
       mainBooker: bookerName,
@@ -261,9 +275,9 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       assignments,
       totalAmount: guestCount * TICKET_PRICE,
       slipFileName: slipFile?.name || 'slip.jpg',
-      slipUrl: undefined, // Never store a base64 slip in a public reservation payload
+      slipUrl: effectiveSlipUrl,
       slipTimestamp: timestamp,
-      status: 'pending', // A slip upload is not payment verification
+      status: 'pending', // Waiting for staff approval
       createdAt: timestamp
     };
 
@@ -271,7 +285,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     try {
       await onSaveReservation(record);
       setConfirmedReservation(record);
-      setCurrentStep(5);
+      setCurrentStep(4);
     } catch (error) {
       alert(error instanceof Error ? error.message : 'บันทึกการจองไม่สำเร็จ กรุณาลองใหม่');
     } finally {
@@ -290,22 +304,21 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
 
   return (
     <div className="max-w-5xl mx-auto mb-16">
-      {/* 5-Step Progress Indicators */}
+      {/* 4-Step Progress Indicators */}
       <div className="no-print bg-slate-900/90 border border-amber-500/30 rounded-2xl p-4 sm:p-6 mb-8 shadow-xl backdrop-blur-sm">
         <div className="flex items-center justify-between max-w-3xl mx-auto">
           {[
             { step: 1, label: '1. ข้อมูลผู้ร่วมงาน' },
-            { step: 2, label: '2. ชำระเงิน/สลิป' },
-            { step: 3, label: '3. อนุมัติสิทธิ์' },
-            { step: 4, label: '4. เลือกโต๊ะ/ที่นั่ง' },
-            { step: 5, label: '5. บัตรเข้างาน' }
+            { step: 2, label: '2. ชำระเงิน & สลิป' },
+            { step: 3, label: '3. เลือกโต๊ะ & ที่นั่ง' },
+            { step: 4, label: '4. รอเจ้าหน้าที่อนุมัติ' }
           ].map((item, i, arr) => (
             <React.Fragment key={item.step}>
               <div className="flex flex-col items-center">
                 <button
                   onClick={() => {
-                    // Only allow going backwards or to step 5 if confirmed
-                    if (item.step < currentStep || (item.step === 5 && confirmedReservation)) {
+                    // Only allow going backwards or to step 4 if confirmed
+                    if (item.step < currentStep || (item.step === 4 && confirmedReservation)) {
                       setCurrentStep(item.step);
                     }
                   }}
@@ -712,74 +725,25 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
             <button
               type="button"
               onClick={handleStep2Submit}
-              className="px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center gap-2"
+              className="px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-xl shadow-lg shadow-amber-600/20 transition-all flex items-center gap-2 cursor-pointer"
             >
-              <span>ส่งข้อมูลเพื่อตรวจสอบ</span>
+              <span>ถัดไป: เลือกโต๊ะและที่นั่ง</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* ================= STEP 3: VERIFICATION APPROVAL ================= */}
+      {/* ================= STEP 3: TABLE & SEAT SELECTION ================= */}
       {currentStep === 3 && (
-        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-amber-500/30 shadow-xl shadow-slate-900/5 text-center">
-          <div className="max-w-xl mx-auto py-8">
-            <div className="w-20 h-20 rounded-full bg-emerald-100 border-4 border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto mb-6 shadow-inner">
-              <CheckCircle2 className="w-10 h-10" />
-            </div>
-
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold mb-3">
-              <span>STATUS: PAYMENT APPROVED</span>
-            </div>
-
-            <h2 className="font-serif-thai text-3xl font-bold text-slate-900 mb-3">
-              ตรวจสอบการชำระเงินเรียบร้อยแล้ว
-            </h2>
-
-            <p className="text-slate-600 text-sm leading-relaxed mb-6">
-              ระบบได้รับหลักฐานการโอนเงินจำนวน{' '}
-              <strong className="text-slate-900">{(guestCount * TICKET_PRICE).toLocaleString('th-TH')} บาท</strong>{' '}
-              เรียบร้อยแล้ว — สิทธิ์ในการเลือกโต๊ะและเก้าอี้ถูกเปิดใช้งานสำหรับทั้ง {guestCount} ท่าน
-            </p>
-
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left text-xs text-slate-600 space-y-1.5 mb-8">
-              <div className="flex justify-between">
-                <span>ผู้ลงทะเบียนหลัก:</span>
-                <span className="font-semibold text-slate-800">{bookerName}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>จำนวนสิทธิ์ที่นั่ง:</span>
-                <span className="font-semibold text-slate-800">{guestCount} ที่นั่ง</span>
-              </div>
-              <div className="flex justify-between">
-                <span>สถานะระบบ:</span>
-                <span className="font-bold text-emerald-600">อนุมัติแล้ว พร้อมเลือกที่นั่ง</span>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setCurrentStep(4)}
-              className="w-full sm:w-auto px-10 py-4 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold rounded-2xl shadow-xl shadow-amber-600/30 transition-all flex items-center justify-center gap-2 mx-auto"
-            >
-              <span>ไปยังขั้นตอนเลือกโต๊ะและที่นั่ง</span>
-              <ArrowRight className="w-5 h-5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ================= STEP 4: TABLE & SEAT SELECTION ================= */}
-      {currentStep === 4 && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-amber-500/30 shadow-xl shadow-slate-900/5">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-6 border-b border-slate-100 gap-4 mb-6">
             <div>
               <div className="text-xs font-semibold text-amber-700 tracking-wider uppercase mb-1">
-                STEP 04 — INTERACTIVE TABLE & SEAT ASSIGNMENT
+                STEP 03 — INTERACTIVE TABLE & SEAT ASSIGNMENT
               </div>
               <h2 className="font-serif-thai text-2xl sm:text-3xl font-bold text-slate-900">
-                4. เลือกโต๊ะและที่นั่งรายบุคคล
+                3. เลือกโต๊ะและที่นั่งรายบุคคล
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
                 คลิกเลือกโต๊ะที่ต้องการ จากนั้นคลิกเก้าอี้ว่างเพื่อระบุผู้เข้าร่วมแต่ละคน
@@ -1020,33 +984,96 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                 type="button"
                 onClick={handleConfirmReservation}
                 disabled={saving || !seatsReady || Object.keys(assignments).length !== guestCount}
-                className="px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2"
+                className="px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
-                <span>{saving ? 'กำลังตรวจสอบและบันทึก...' : 'ยืนยันโต๊ะและรับบัตรเข้างาน'}</span>
+                <span>{saving ? 'กำลังตรวจสอบและบันทึก...' : 'ยืนยันการจองและส่งหลักฐาน (รอตรวจสลิป)'}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ================= STEP 5: DIGITAL TICKETS & PASSES ================= */}
-      {currentStep === 5 && (
-        <div className="space-y-8">
-          {/* Success Banner */}
-          <div className="no-print bg-emerald-900/90 text-white rounded-3xl p-6 sm:p-8 border border-emerald-500/40 shadow-xl text-center">
-            <div className="w-16 h-16 rounded-full bg-emerald-700 border-2 border-emerald-400 flex items-center justify-center mx-auto mb-4 text-emerald-200">
-              <CheckCircle2 className="w-8 h-8" />
-            </div>
-            <h2 className="font-serif-thai text-2xl sm:text-3xl font-bold text-emerald-100 mb-2">
-              สำรองที่นั่งสำเร็จเรียบร้อยแล้ว
-            </h2>
-            <p className="text-emerald-200 text-sm max-w-xl mx-auto mb-6">
-              ระบบได้ออกบัตรเกียรติยศเข้างานดิจิทัล (Digital Gala Pass) สำหรับทั้ง {guestCount} ท่าน
-              โปรดบันทึกภาพหรือพิมพ์บัตรเพื่อใช้แสดง ณ จุดลงทะเบียนหน้าห้องจัดเลี้ยง โรงแรมราชาวดี ขอนแก่น
-            </p>
+      {/* ================= STEP 4: DIGITAL TICKETS & WAITING FOR APPROVAL ================= */}
+      {currentStep === 4 && (
+        <div className="space-y-8 animate-in fade-in duration-300">
+          {/* Status Banner */}
+          <div className="no-print bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white rounded-3xl p-6 sm:p-8 border-2 border-amber-400/50 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="flex flex-wrap items-center justify-center gap-3">
+            <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
+              <div className="space-y-2">
+                <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold border border-amber-400/30">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>สถานะ: รอเจ้าหน้าที่อนุมัติหลังตรวจสอบ (PENDING APPROVAL)</span>
+                </div>
+                <h2 className="font-serif-thai text-2xl sm:text-3xl font-bold text-amber-100">
+                  สำรองที่นั่งเรียบร้อยแล้ว · รอเจ้าหน้าที่ตรวจสอบสลิปและอนุมัติ
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+                  ระบบได้ทำการล็อคตำแหน่งที่นั่งสำหรับทั้ง <strong className="text-amber-300">{guestCount} ท่าน</strong> ไว้เรียบร้อยแล้ว ขณะนี้อยู่ระหว่างการตรวจสอบความถูกต้องของสลิปโอนเงินโดยเจ้าหน้าที่ เมื่อได้รับการอนุมัติแล้ว ท่านจะสามารถนำบัตรดิจิทัลเข้างานได้ทันที
+                </p>
+              </div>
+
+              <div className="shrink-0 flex flex-wrap gap-2">
+                {confirmedReservation?.slipUrl && (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModalSlipUrl(confirmedReservation.slipUrl!)}
+                    className="px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border border-amber-400/40 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Eye className="w-4 h-4 text-amber-400" />
+                    <span>เปิดดูสลิปที่แนบมา</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={onViewAdmin}
+                  className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 rounded-xl text-xs font-bold flex items-center gap-2 transition-all cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>ช่องระบบเจ้าหน้าที่</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Booking Details Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-6">
+              <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">รหัสการจอง</span>
+                <span className="font-mono text-xs sm:text-sm font-bold text-amber-300 truncate block">{confirmedReservation?.id}</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">ผู้จองหลัก</span>
+                <span className="font-bold text-sm text-white truncate block">{bookerName}</span>
+                <span className="text-[10px] text-slate-400">{phone}</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">ยอดชำระ ({guestCount} ท่าน)</span>
+                <span className="font-serif-thai text-base font-bold text-amber-300 tabular-nums">
+                  {(guestCount * TICKET_PRICE).toLocaleString('th-TH')} บาท
+                </span>
+                <span className="text-[10px] text-emerald-400 block">อัตราท่านละ 799 บ.</span>
+              </div>
+              <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-slate-800">
+                <span className="text-[11px] text-slate-400 block mb-1">หลักฐานสลิป</span>
+                {confirmedReservation?.slipUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => setPreviewModalSlipUrl(confirmedReservation.slipUrl!)}
+                    className="text-xs font-bold text-amber-300 hover:underline flex items-center gap-1 cursor-pointer"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>คลิกดูสลิปที่แนบมา</span>
+                  </button>
+                ) : (
+                  <span className="text-xs text-slate-400">แนบสลิปแล้ว</span>
+                )}
+                <span className="text-[10px] text-amber-400/80 block mt-0.5">รอเจ้าหน้าที่ตรวจ</span>
+              </div>
+            </div>
+            {/* Action buttons inside status banner */}
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-6 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => {
@@ -1066,7 +1093,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                     email
                   });
                 }}
-                className="px-6 py-3 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-950/20 flex items-center gap-2 text-sm transition-all"
+                className="px-6 py-3 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold rounded-xl shadow-lg shadow-amber-950/20 flex items-center gap-2 text-sm transition-all cursor-pointer"
               >
                 <Mail className="w-4 h-4 text-slate-950" />
                 <span>ส่งบัตรเข้างานไปที่อีเมล & ตั้งเตือน 1 วัน</span>
@@ -1075,26 +1102,18 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="px-6 py-3 bg-white text-emerald-950 font-bold rounded-xl shadow hover:bg-emerald-50 transition-all flex items-center gap-2 text-sm"
+                className="px-6 py-3 bg-white text-slate-900 font-bold rounded-xl shadow hover:bg-slate-100 transition-all flex items-center gap-2 text-sm cursor-pointer"
               >
-                <Printer className="w-4 h-4 text-emerald-800" />
-                <span>พิมพ์ / บันทึกบัตร PDF ทั้งหมด</span>
+                <Printer className="w-4 h-4 text-slate-700" />
+                <span>พิมพ์ / บันทึกเอกสาร PDF</span>
               </button>
 
               <button
                 type="button"
                 onClick={onViewFloorPlan}
-                className="px-6 py-3 bg-emerald-800 hover:bg-emerald-700 text-emerald-100 font-semibold rounded-xl border border-emerald-600 transition-all text-sm"
+                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-amber-200 font-semibold rounded-xl border border-slate-700 transition-all text-sm cursor-pointer"
               >
-                <span>ดูตำแหน่งโต๊ะในผังใหญ่</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={onViewAdmin}
-                className="px-6 py-3 bg-emerald-950 hover:bg-slate-900 text-emerald-200 font-semibold rounded-xl border border-emerald-700 transition-all text-sm"
-              >
-                <span>เปิดระบบเจ้าหน้าที่ (Admin)</span>
+                <span>ดูตำแหน่งโต๊ะในผัง 12 โต๊ะ</span>
               </button>
             </div>
           </div>
@@ -1127,9 +1146,15 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                         </span>
                       </div>
                     </div>
-                    <span className="px-3 py-1 bg-amber-500/20 text-amber-300 font-mono text-xs rounded-full border border-amber-500/40 font-bold">
-                      {ticketCode}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-400/40 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-amber-400" />
+                        <span>รอเจ้าหน้าที่อนุมัติ</span>
+                      </span>
+                      <span className="px-3 py-1 bg-amber-500/20 text-amber-300 font-mono text-xs rounded-full border border-amber-500/40 font-bold">
+                        {ticketCode}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Ticket Body */}
@@ -1313,6 +1338,37 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
           defaultEmail={emailModalGuest.email || email}
           tableName={TABLES.find(t => t.id === emailModalGuest.table)?.name}
         />
+      )}
+
+      {/* Lightbox Modal: View Uploaded Slip in High Resolution */}
+      {previewModalSlipUrl && (
+        <div className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 rounded-3xl max-w-xl w-full border border-amber-500/40 p-6 shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <span className="text-sm font-bold text-amber-200 flex items-center gap-2">
+                <FileCheck className="w-4 h-4 text-amber-400" />
+                <span>หลักฐานการโอนเงินที่แนบมา (สลิปโอนเงิน)</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setPreviewModalSlipUrl(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="py-4 flex justify-center">
+              <img
+                src={previewModalSlipUrl}
+                alt="สลิปโอนเงิน"
+                className="max-h-[70vh] rounded-2xl border border-slate-700 shadow-xl object-contain bg-white"
+              />
+            </div>
+            <div className="pt-2 text-center text-xs text-slate-400">
+              หลักฐานสลิปสำหรับตรวจสอบยอดโอน 799 บ./ท่าน
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

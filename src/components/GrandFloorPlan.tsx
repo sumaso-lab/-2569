@@ -32,8 +32,8 @@ export const GrandFloorPlan: React.FC<GrandFloorPlanProps> = ({
   const [zoneFilter, setZoneFilter] = useState<'all' | 'โซนอาจารย์' | 'โซนบัณฑิต' | 'โซน AGN5' | string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'available' | 'full'>('all');
 
-  // View modes: 'diagram' (matching image) | 'banquet' (individual round table) | 'photo' (original image) | 'list' (card grid)
-  const [viewMode, setViewMode] = useState<'diagram' | 'banquet' | 'photo' | 'list'>('diagram');
+  // View modes: 'diagram' (matching image) | 'banquet' (individual round table) | 'list' (card grid)
+  const [viewMode, setViewMode] = useState<'diagram' | 'banquet' | 'list'>('diagram');
 
   // Spotlight active table for Chinese Banquet 8-person round view
   const [activeBanquetTableId, setActiveBanquetTableId] = useState<number>(1);
@@ -249,18 +249,6 @@ export const GrandFloorPlan: React.FC<GrandFloorPlanProps> = ({
               <span>🔍 ดูโต๊ะจีนกลม 8 คน (โชว์รายชื่อ)</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => setViewMode('photo')}
-              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-2 cursor-pointer ${
-                viewMode === 'photo'
-                  ? 'bg-amber-400 text-slate-950 shadow font-extrabold'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <ImageIcon className="w-4 h-4" />
-              <span>🖼️ รูปผังต้นฉบับ (Original Diagram)</span>
-            </button>
 
             <button
               type="button"
@@ -412,20 +400,11 @@ export const GrandFloorPlan: React.FC<GrandFloorPlanProps> = ({
           </div>
 
           {/* Quick Notice about Table Categories */}
-          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-amber-700 shrink-0" />
-              <span>
-                <strong>การจัดสรรโซนโต๊ะ:</strong> โต๊ะ 1–2 (อาจารย์) · โต๊ะ 3–9 (บัณฑิต ป.โท) · โต๊ะ 10–12 (AGN5) — รวมทั้งสิ้น 12 โต๊ะ 96 ที่นั่ง
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setViewMode('photo')}
-              className="text-xs font-bold text-amber-900 underline hover:text-amber-700 shrink-0 cursor-pointer"
-            >
-              ดูภาพแปลนต้นฉบับ →
-            </button>
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+            <Info className="w-4 h-4 text-amber-700 shrink-0" />
+            <span>
+              <strong>การจัดสรรโซนโต๊ะ:</strong> โต๊ะ 1–2 (อาจารย์) · โต๊ะ 3–9 (บัณฑิต ป.โท) · โต๊ะ 10–12 (AGN5) — รวมทั้งสิ้น 12 โต๊ะ 96 ที่นั่ง
+            </span>
           </div>
         </div>
       )}
@@ -487,36 +466,6 @@ export const GrandFloorPlan: React.FC<GrandFloorPlanProps> = ({
         </div>
       )}
 
-      {/* ================= VIEW MODE 3: ORIGINAL DIAGRAM PHOTO ================= */}
-      {viewMode === 'photo' && (
-        <div className="bg-white rounded-3xl p-6 sm:p-10 border border-amber-500/30 shadow-xl space-y-6">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-2">
-            <div>
-              <h3 className="font-serif-thai text-xl font-bold text-slate-900">
-                ภาพผังห้องจัดเลี้ยงต้นฉบับ (Original Seating Layout)
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                ผังผังห้องจัดเลี้ยง 12 โต๊ะ: 1-2 อาจารย์, 3-9 บัณฑิต, 10-12 AGN5
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setViewMode('diagram')}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold rounded-xl transition-colors shrink-0"
-            >
-              สลับไปที่ผังเสมือนจริง 12 โต๊ะ
-            </button>
-          </div>
-
-          <div className="flex justify-center bg-slate-900 p-4 rounded-3xl border border-slate-800 shadow-inner">
-            <img
-              src="/assets/aistudio/image_61decdba.png"
-              alt="ผังจัดเลี้ยง 12 โต๊ะ โรงแรมราชาวดี ขอนแก่น"
-              className="max-h-[75vh] w-auto rounded-2xl object-contain shadow-2xl border border-slate-700"
-            />
-          </div>
-        </div>
-      )}
 
       {/* ================= VIEW MODE 4: LIST OF 12 TABLES ================= */}
       {viewMode === 'list' && (

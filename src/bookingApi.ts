@@ -1,13 +1,22 @@
 import type { ExistingSeat, ReservationRecord } from './types';
 
-const base = import.meta.env.VITE_SUPABASE_URL || '';
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+const defaultBase = 'https://xvmnouioezqxcomughci.supabase.co';
+const defaultAnon = 'sb_publishable_bNJhssq-2DVA4h1R56wcIQ_lkB66IvT';
+
+const base = import.meta.env.VITE_SUPABASE_URL || defaultBase;
+const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || defaultAnon;
 
 async function request<T>(name: string, payload?: unknown): Promise<T> {
   if (!base || !anon) {
     throw new Error('ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL หรือ VITE_SUPABASE_ANON_KEY ในระบบ');
   }
-  const response = await fetch(`${base}/functions/v1/${name}`, {
+
+  // In local development, use Vite dev proxy to preserve ALLOWED_ORIGIN check
+  const endpoint = import.meta.env.DEV
+    ? `/supabase-functions/${name}`
+    : `${base}/functions/v1/${name}`;
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
     body: JSON.stringify(payload ?? {}),
