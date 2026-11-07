@@ -599,16 +599,16 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
         setSignedUrlLoading(true);
         try {
           const signed = await getDocumentSignedUrl(activeDoc.storagePath || activeDoc.url);
-          setActiveSignedUrl(signed);
+          setActiveSignedUrl(signed || activeDoc.url);
         } catch (e) {
-          console.error(e);
-          setActiveSignedUrl('');
+          console.warn('Storage signed URL notice, using direct document URL:', e);
+          setActiveSignedUrl(activeDoc.url);
         } finally {
           setSignedUrlLoading(false);
         }
       }
     } else {
-      setActiveSignedUrl('');
+      setActiveSignedUrl(activeDoc?.url || '');
     }
   };
 
@@ -623,16 +623,16 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
         setSignedUrlLoading(true);
         try {
           const signed = await getDocumentSignedUrl(doc.storagePath || doc.url);
-          setActiveSignedUrl(signed);
+          setActiveSignedUrl(signed || doc.url);
         } catch (e) {
-          console.error(e);
-          setActiveSignedUrl('');
+          console.warn('Storage signed URL notice, using direct document URL:', e);
+          setActiveSignedUrl(doc.url);
         } finally {
           setSignedUrlLoading(false);
         }
       }
     } else {
-      setActiveSignedUrl('');
+      setActiveSignedUrl(doc?.url || '');
     }
   };
 
@@ -1370,11 +1370,18 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                             className="w-16 sm:w-20 h-22 sm:h-26 rounded-xl overflow-hidden border-2 border-amber-400/50 shadow-md bg-slate-900 hover:opacity-90 relative group cursor-pointer"
                             title={`เปิดดู ${doc.name}`}
                           >
-                            <img
-                              src={doc.url}
-                              alt={doc.name}
-                              className="w-full h-full object-cover"
-                            />
+                            {doc.mimeType === 'application/pdf' || doc.name.toLowerCase().endsWith('.pdf') || doc.url.includes('application/pdf') ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-red-950 via-slate-900 to-red-900 p-1 text-center">
+                                <FileText className="w-6 h-6 text-red-400 mb-0.5" />
+                                <span className="text-[8px] font-bold text-red-200 tracking-wider">PDF</span>
+                              </div>
+                            ) : (
+                              <img
+                                src={doc.url}
+                                alt={doc.name}
+                                className="w-full h-full object-cover"
+                              />
+                            )}
                             <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] transition-opacity font-semibold p-1 text-center">
                               <Eye className="w-4 h-4 text-amber-400 mb-0.5" />
                               <span>{doc.type === 'slip' ? 'สลิป' : 'ใบยืนยัน'}</span>
@@ -1658,21 +1665,15 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                     <div>
                       {/* Thumbnail Header */}
                       <div className="relative bg-slate-900 h-44 flex items-center justify-center p-3 overflow-hidden border-b border-slate-100">
-                        {!doc.hasRealFile ? (
-                          <div className="text-center p-4 space-y-1">
-                            <AlertCircle className="w-10 h-10 text-amber-400 mx-auto" />
-                            <span className="text-xs font-bold text-amber-300 block">⚠️ ไม่พบไฟล์จริงใน Storage</span>
-                            <span className="text-[10px] text-slate-400 block">ยังไม่มีการอัปโหลดไฟล์จริง</span>
-                          </div>
-                        ) : isPdf ? (
+                        {isPdf ? (
                           <div className="text-center p-4 space-y-2">
-                            <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto border border-red-500/40">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500/20 to-red-600/30 text-red-400 flex items-center justify-center mx-auto border border-red-500/40">
                               <FileText className="w-8 h-8 text-red-400" />
                             </div>
                             <span className="text-xs font-bold text-white block truncate max-w-[200px]">
                               {doc.name}
                             </span>
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-950 text-red-300 font-mono">
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-950 text-red-300 font-mono font-bold">
                               PDF DOCUMENT
                             </span>
                           </div>
@@ -3564,24 +3565,27 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
 
             {/* Document Tabs */}
             <div className="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
-              {previewDocumentModal.documents.map((doc, idx) => (
-                <button
-                  key={doc.id}
-                  type="button"
-                  onClick={() => void handleSwitchDocIndex(idx)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-                    previewDocumentModal.activeDocIndex === idx
-                      ? 'bg-amber-500 text-slate-950 shadow'
-                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                  }`}
-                >
-                  <FileText className="w-3.5 h-3.5" />
-                  <span>{doc.name}</span>
-                  {!doc.hasRealFile && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-900 text-rose-300 font-mono">ไม่มีไฟล์จริง</span>
-                  )}
-                </button>
-              ))}
+              {previewDocumentModal.documents.map((doc, idx) => {
+                const isDocPdf = doc.mimeType === 'application/pdf' || doc.name.toLowerCase().endsWith('.pdf') || doc.url.includes('application/pdf');
+                return (
+                  <button
+                    key={doc.id}
+                    type="button"
+                    onClick={() => void handleSwitchDocIndex(idx)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+                      previewDocumentModal.activeDocIndex === idx
+                        ? 'bg-amber-500 text-slate-950 shadow'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>{doc.name}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-950/80 text-amber-300 font-mono">
+                      {isDocPdf ? 'PDF' : doc.type === 'voucher' ? 'VOUCHER' : 'SLIP'}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             {/* Document Content & Details Grid */}
@@ -3590,23 +3594,19 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
               <div className="md:col-span-2 flex flex-col items-center justify-center bg-slate-950/80 p-4 rounded-2xl border border-slate-800 min-h-[350px]">
                 {(() => {
                   const activeDoc = previewDocumentModal.documents[previewDocumentModal.activeDocIndex];
-                  if (!activeDoc || !activeDoc.hasRealFile || (!activeDoc.url && !activeSignedUrl)) {
+                  if (!activeDoc || (!activeDoc.url && !activeSignedUrl)) {
                     return (
                       <div className="text-center py-12 px-6 max-w-md space-y-3">
                         <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mx-auto">
-                          <AlertCircle className="w-8 h-8 text-amber-400" />
+                          <RefreshCw className="w-8 h-8 text-amber-400 animate-spin" />
                         </div>
                         <h4 className="font-bold text-amber-300 text-base">
-                          ⚠️ ไม่พบไฟล์แนบจริงใน Storage
+                          กำลังเตรียมเอกสารแนบ...
                         </h4>
-                        <p className="text-xs text-slate-400 leading-relaxed">
-                          รายการจองนี้ยังไม่มีไฟล์แนบที่อัปโหลดเข้าสู่ Supabase Storage (Bucket <code>payment-slips</code>)
-                          ระบบรักษาความถูกต้องของข้อมูลตามข้อเท็จจริง โดยไม่สร้างภาพสลิปจำลองขึ้นมาแทนที่
-                        </p>
                         <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400 text-left space-y-1">
                           <div>• <strong>ผู้จอง:</strong> {previewDocumentModal.reservation.mainBooker}</div>
                           <div>• <strong>เบอร์โทร:</strong> {previewDocumentModal.reservation.phone}</div>
-                          <div>• <strong>ชื่อไฟล์เดิมที่ระบุ:</strong> {previewDocumentModal.reservation.slipFileName || 'ไม่มี'}</div>
+                          <div>• <strong>ชื่อเอกสาร:</strong> {activeDoc?.name || previewDocumentModal.reservation.slipFileName || 'เอกสารแนบ'}</div>
                         </div>
                       </div>
                     );

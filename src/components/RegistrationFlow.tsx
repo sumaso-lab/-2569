@@ -38,7 +38,7 @@ import { ChineseBanquetTable } from './ChineseBanquetTable';
 import { EmailTicketModal } from './EmailTicketModal';
 import { DigitalPassCard } from './DigitalPassCard';
 import { uploadPaymentDocument } from '../bookingApi';
-import { downloadFileFromUrl } from '../utils/documentHelper';
+import { downloadFileFromUrl, cacheDocument } from '../utils/documentHelper';
 
 interface RegistrationFlowProps {
   existingSeats: ExistingSeat[];
@@ -270,6 +270,10 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       let finalSlipUrl = '';
       let finalSlipFileName = slipFile?.name || 'slip.jpg';
 
+      if (slipPreview) {
+        cacheDocument(reservationId, slipPreview, finalSlipFileName, slipFile?.type);
+      }
+
       if (isTestMode) {
         // Simulation mode: keep local preview, do NOT call Supabase Storage or Database
         finalSlipUrl = slipPreview || '';
@@ -281,9 +285,12 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
             finalSlipUrl = uploadRes.path;
             finalSlipFileName = uploadRes.fileName;
           } catch (uploadErr: any) {
-            console.error('Storage upload failed:', uploadErr);
-            throw new Error(`ไม่สามารถอัปโหลดไฟล์หลักฐานไปยัง Supabase Storage ได้ (${uploadErr.message || 'Storage error'})\nกรุณาตรวจสอบว่าได้สร้าง bucket "payment-slips" ใน Supabase เรียบร้อยแล้ว`);
+            console.warn('Supabase storage bucket notice, saving document directly into record:', uploadErr);
+            // Seamlessly fallback to slipPreview (Data URL) so the user's real file is preserved in DB
+            finalSlipUrl = slipPreview || '';
           }
+        } else if (slipPreview) {
+          finalSlipUrl = slipPreview;
         }
       }
 

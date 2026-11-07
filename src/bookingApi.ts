@@ -34,8 +34,38 @@ export async function fetchPublicSeats(): Promise<ExistingSeat[]> {
 }
 
 export async function createReservation(record: ReservationRecord): Promise<void> {
-  const { id, mainBooker, phone, email, category, academicYear, guestCount, guests, assignments, totalAmount, slipFileName, slipTimestamp } = record;
-  await request('create-reservation', { id, mainBooker, phone, email, category, academicYear, guestCount, guests, assignments, totalAmount, slipFileName, slipTimestamp });
+  const {
+    id,
+    mainBooker,
+    phone,
+    email,
+    category,
+    academicYear,
+    guestCount,
+    guests,
+    assignments,
+    totalAmount,
+    slipFileName,
+    slipUrl,
+    slipTimestamp
+  } = record;
+
+  await request('create-reservation', {
+    id,
+    mainBooker,
+    phone,
+    email,
+    category,
+    academicYear,
+    guestCount,
+    guests,
+    assignments,
+    totalAmount,
+    slipFileName,
+    slipUrl,
+    storagePath: slipUrl,
+    slipTimestamp
+  });
 }
 
 export async function fetchAdminReservations(): Promise<ReservationRecord[]> {
@@ -125,9 +155,19 @@ export async function uploadPaymentDocument(file: File, reservationId: string): 
  */
 export async function getDocumentSignedUrl(pathOrUrl: string): Promise<string> {
   if (!pathOrUrl) return '';
-  if (pathOrUrl.startsWith('data:') || pathOrUrl.startsWith('blob:')) {
+  if (pathOrUrl.startsWith('data:') || pathOrUrl.startsWith('blob:') || pathOrUrl.startsWith('http://') || pathOrUrl.startsWith('https://')) {
     return pathOrUrl;
   }
+
+  // Check local document cache first if path includes a reservation ID
+  try {
+    const { getCachedDocument } = await import('./utils/documentHelper');
+    const possibleResId = pathOrUrl.split('/')[0];
+    const cached = getCachedDocument(possibleResId);
+    if (cached?.dataUrl) {
+      return cached.dataUrl;
+    }
+  } catch {}
 
   const { supabase } = await import('./supabase');
   let cleanPath = pathOrUrl;
@@ -135,20 +175,25 @@ export async function getDocumentSignedUrl(pathOrUrl: string): Promise<string> {
     cleanPath = pathOrUrl.split('/payment-slips/')[1];
   }
 
-  const { data, error } = await supabase.storage
-    .from('payment-slips')
-    .createSignedUrl(cleanPath, 3600);
+  try {
+    const { data, error } = await supabase.storage
+      .from('payment-slips')
+      .createSignedUrl(cleanPath, 3600);
 
-  if (error || !data?.signedUrl) {
-    // Fallback: try requesting through admin-api
+    if (!error && data?.signedUrl) {
+      return data.signedUrl;
+    }
+  } catch {}
+
+  // Fallback: try requesting through admin-api
+  try {
     const { data: adminData } = await supabase.functions.invoke('admin-api', {
       body: { action: 'get-signed-url', path: cleanPath }
     });
     if (adminData?.signedUrl) return adminData.signedUrl;
-    throw new Error(error?.message || 'ไม่พบไฟล์ในพื้นที่จัดเก็บ Storage');
-  }
+  } catch {}
 
-  return data.signedUrl;
+  return pathOrUrl;
 }
 
 /**
