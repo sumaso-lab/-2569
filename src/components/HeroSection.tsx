@@ -106,7 +106,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             <Clock className="w-5 h-5 text-amber-400 shrink-0" />
             <div>
               <span className="block text-slate-400 text-[11px]">เวลาจัดงาน</span>
-              <span className="font-medium text-slate-100">16.30 – 20.00 น.</span>
+              <span className="font-medium text-slate-100">18.00 – 22.00 น.</span>
             </div>
           </div>
 

@@ -234,7 +234,7 @@ export const DigitalPassCard: React.FC<DigitalPassCardProps> = ({
       // Event Details Box
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 30px "Sarabun", sans-serif';
-      ctx.fillText('วันเสาร์ที่ 21 ธันวาคม 2569  เวลา 16.30 - 20.00 น.', 600, 755);
+      ctx.fillText('วันเสาร์ที่ 21 ธันวาคม 2569  เวลา 18.00 - 22.00 น.', 600, 755);
 
       ctx.fillStyle = '#e2e8f0';
       ctx.font = '26px "Sarabun", sans-serif';
@@ -412,7 +412,7 @@ export const DigitalPassCard: React.FC<DigitalPassCardProps> = ({
               <div>
                 <span className="font-semibold text-white block">วันเสาร์ที่ 21 ธันวาคม 2569</span>
                 <span className="text-[11px] text-slate-400 flex items-center gap-1 mt-0.5">
-                  <Clock className="w-3.5 h-3.5 text-amber-400" /> เวลา 16.30 - 20.00 น.
+                  <Clock className="w-3.5 h-3.5 text-amber-400" /> เวลา 18.00 - 22.00 น.
                 </span>
               </div>
             </div>

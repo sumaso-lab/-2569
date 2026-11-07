@@ -1305,7 +1305,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                             onClick={() => {
                               trigger24hReminderEmail(res);
                               setEmailLogs(getEmailDispatchLogs());
-                              alert(`✓ จำลองส่งอีเมลแจ้งเตือนล่วงหน้า 24 ชม. ไปยัง ${res.email || 'ผู้จอง'} สำเร็จเรียบร้อยแล้ว!\nกำหนดการจริง: 20 ธ.ค. 2569 เวลา 16:30 น.`);
+                              alert(`✓ จำลองส่งอีเมลแจ้งเตือนล่วงหน้า 24 ชม. ไปยัง ${res.email || 'ผู้จอง'} สำเร็จเรียบร้อยแล้ว!\nกำหนดการจริง: 20 ธ.ค. 2569 เวลา 18:00 น. (ก่อนเริ่มงาน 21 ธ.ค. 18.00 - 22.00 น.)`);
                             }}
                             className="px-2.5 py-1.5 bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors"
                             title="ทดสอบจำลองส่งอีเมลแจ้งเตือนก่อนงาน 24 ชม. ไปยังผู้จอง"
@@ -1931,7 +1931,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                 ระบบจัดส่งอีเมลอัตโนมัติ (ส่งทันทีหลังอนุมัติ + แจ้งเตือนก่อนงาน 24 ชม.)
               </h3>
               <p className="text-xs sm:text-sm text-slate-500 mt-1">
-                ระบบจัดส่งบัตร Digital Pass เข้ากล่องจดหมายผู้จองทันทีที่อนุมัติ และตั้งเวลาส่งแจ้งเตือนล่วงหน้า 24 ชม. (20 ธ.ค. 2569 เวลา 16:30 น.)
+                ระบบจัดส่งบัตร Digital Pass เข้ากล่องจดหมายผู้จองทันทีที่อนุมัติ และตั้งเวลาส่งแจ้งเตือนล่วงหน้า 24 ชม. (20 ธ.ค. 2569 เวลา 18:00 น.)
               </p>
             </div>
 
@@ -1968,11 +1968,11 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                 <span>2. ส่งอีเมลแจ้งเตือนก่อนงาน 24 ชม. (24h Pre-Event Reminder)</span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed pl-7">
-                ระบบตั้งเวลาส่งอีเมลแจ้งเตือนล่วงหน้า 24 ชม. ในวันที่ <strong>20 ธันวาคม 2569 เวลา 16:30 น.</strong> (ก่อนวันงาน 21 ธ.ค. 2569 ประตูเปิด 16:00 น.) เพื่อเตือนให้ผู้ร่วมงานเตรียมบัตร Digital Pass และแนะนำการเดินทาง
+                ระบบตั้งเวลาส่งอีเมลแจ้งเตือนล่วงหน้า 24 ชม. ในวันที่ <strong>20 ธันวาคม 2569 เวลา 18:00 น.</strong> (ก่อนวันงาน 21 ธ.ค. 2569 งานเริ่ม 18.00 - 22.00 น. ลงทะเบียน 17.30 น.) เพื่อเตือนให้ผู้ร่วมงานเตรียมบัตร Digital Pass และแนะนำการเดินทาง
               </p>
               <div className="pl-7 pt-1">
                 <span className="px-2.5 py-0.5 rounded-full bg-sky-600 text-white text-[10px] font-bold">
-                  กำหนดส่ง 20 ธ.ค. 2569 เวลา 16:30 น.
+                  กำหนดส่ง 20 ธ.ค. 2569 เวลา 18:00 น.
                 </span>
               </div>
             </div>

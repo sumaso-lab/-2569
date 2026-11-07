@@ -258,7 +258,7 @@ const [isAdmin, setIsAdmin] = useState(false);
                 โครงการจัดงานฉลองยินดีบัณฑิต คณะพยาบาลศาสตร์ มหาวิทยาลัยขอนแก่น
               </span>
               <span className="text-[11px] text-slate-500">
-                21 ธันวาคม 2569 · โรงแรมราชาวดี ขอนแก่น (ห้องแกรนด์บอลรูม) · ประตูกลางเปิด 16.00 น.
+                21 ธันวาคม 2569 · โรงแรมราชาวดี ขอนแก่น (ห้องแกรนด์บอลรูม) · เวลา 18.00 - 22.00 น. (ลงทะเบียน 17.30 น.)
               </span>
             </div>
           </div>
@@ -269,7 +269,7 @@ const [isAdmin, setIsAdmin] = useState(false);
               <span>สอบถามเพิ่มเติม: <a href="tel:0951864940" className="hover:text-amber-600 font-bold transition-colors">0951864940</a></span>
             </span>
             <span aria-hidden="true">·</span>
-            <span>โต๊ะกลมจัดเลี้ยง 15 โต๊ะ (โต๊ะละ 8 ที่นั่ง)</span>
+            <span>โต๊ะกลมจัดเลี้ยง 12 โต๊ะ (โต๊ะละ 8 ที่นั่ง)</span>
             <span aria-hidden="true">·</span>
             <span className="text-slate-700 font-medium">ระบบสำรองที่นั่งระบุชื่อและบัตรดิจิทัล</span>
           </div>

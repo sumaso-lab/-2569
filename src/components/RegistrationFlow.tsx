@@ -1206,7 +1206,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                       {/* Event schedule & Venue Details */}
                       <div className="text-xs text-slate-300 space-y-1.5">
                         <div>
-                          <strong>วันจัดงาน:</strong> <span className="text-amber-300 font-semibold">21 ธันวาคม 2569</span> · 16.30–20.00 น.
+                          <strong>วันจัดงาน:</strong> <span className="text-amber-300 font-semibold">21 ธันวาคม 2569</span> · 18.00–22.00 น.
                         </div>
                         <div>
                           <strong>สถานที่:</strong> โรงแรมราชาวดี ขอนแก่น (ห้องแกรนด์บอลรูม)

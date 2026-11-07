@@ -79,10 +79,10 @@ export const sendImmediateApprovalEmail = (reservation: ReservationRecord): Emai
 };
 
 /**
- * 2. ตั้งเวลาส่งเมลแจ้งเตือนก่อนงาน 24 ชม. (20 ธ.ค. 2569 เวลา 16:30 น.)
+ * 2. ตั้งเวลาส่งเมลแจ้งเตือนก่อนงาน 24 ชม. (20 ธ.ค. 2569 เวลา 18:00 น.)
  */
 export const schedule24hReminderEmail = (reservation: ReservationRecord): EmailDispatchRecord => {
-  const scheduledTimeStr = '20 ธ.ค. 2569 เวลา 16:30 น. (ก่อนงานเริ่ม 24 ชม.)';
+  const scheduledTimeStr = '20 ธ.ค. 2569 เวลา 18:00 น. (ก่อนงานเริ่ม 24 ชม.)';
   const seatsList = Object.values(reservation.assignments || {})
     .map(a => `โต๊ะ ${a.table} เก้าอี้ ${a.seat}`)
     .join(', ');
@@ -102,7 +102,7 @@ export const schedule24hReminderEmail = (reservation: ReservationRecord): EmailD
     sentAt: 'รอดำเนินการอัตโนมัติ',
     scheduledFor: scheduledTimeStr,
     status: 'scheduled',
-    contentSnippet: `เตือนล่วงหน้า 24 ชม. เตรียมบัตร Digital Pass เข้างานพรุ่งนี้ 21 ธ.ค. 2569 ณ รร.ราชาวดี ที่นั่ง: ${seatsList}`
+    contentSnippet: `เตือนล่วงหน้า 24 ชม. เตรียมบัตร Digital Pass เข้างานพรุ่งนี้ 21 ธ.ค. 2569 เวลา 18.00 - 22.00 น. ณ รร.ราชาวดี ที่นั่ง: ${seatsList}`
   };
 
   saveEmailDispatchLog(log);
@@ -131,9 +131,9 @@ export const trigger24hReminderEmail = (reservation: ReservationRecord): EmailDi
     seat: Object.values(reservation.assignments || {})[0]?.seat || 1,
     ticketCodes: reservation.guests.map(g => g.ticketCode || '').filter(Boolean),
     sentAt: timestamp,
-    scheduledFor: '20 ธ.ค. 2569 เวลา 16:30 น.',
+    scheduledFor: '20 ธ.ค. 2569 เวลา 18:00 น.',
     status: 'delivered',
-    contentSnippet: `ส่งแจ้งเตือนก่อนเริ่มงาน 24 ชม. สำเร็จ: พรุ่งนี้ 21 ธ.ค. 2569 ประตูเปิด 16.00 น. เริ่มงาน 16.30 น. รร.ราชาวดี ที่นั่ง: ${seatsList}`
+    contentSnippet: `ส่งแจ้งเตือนก่อนเริ่มงาน 24 ชม. สำเร็จ: พรุ่งนี้ 21 ธ.ค. 2569 ลงทะเบียน 17.30 น. เริ่มงาน 18.00 - 22.00 น. รร.ราชาวดี ที่นั่ง: ${seatsList}`
   };
 
   saveEmailDispatchLog(log);
