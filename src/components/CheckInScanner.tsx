@@ -23,6 +23,7 @@ import { ExistingSeat, TableConfig } from '../types';
 import { TABLES } from '../data/initialData';
 import { KKUNursingLogo } from './KKUNursingLogo';
 import { ChineseBanquetTable } from './ChineseBanquetTable';
+import jsQR from 'jsqr';
 
 interface CheckInScannerProps {
   existingSeats: ExistingSeat[];
@@ -117,8 +118,16 @@ export const CheckInScanner: React.FC<CheckInScannerProps> = ({
     }
   };
 
+  const lastScanTimestampRef = useRef<number>(0);
+  const animationFrameRef = useRef<number | null>(null);
+  const hiddenCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
   // Stop Camera
   const stopCamera = () => {
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -126,13 +135,69 @@ export const CheckInScanner: React.FC<CheckInScannerProps> = ({
     setIsCameraActive(false);
   };
 
+  // Live QR Code Frame Decoding Loop
+  useEffect(() => {
+    if (!isCameraActive) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      return;
+    }
+
+    if (!hiddenCanvasRef.current) {
+      hiddenCanvasRef.current = document.createElement('canvas');
+    }
+
+    const scanFrame = () => {
+      if (
+        videoRef.current &&
+        videoRef.current.readyState === videoRef.current.HAVE_ENOUGH_DATA
+      ) {
+        const canvas = hiddenCanvasRef.current!;
+        const video = videoRef.current;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+
+        if (ctx) {
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          const code = jsQR(imageData.data, imageData.width, imageData.height, {
+            inversionAttempts: 'dontInvert'
+          });
+
+          if (code && code.data) {
+            const now = Date.now();
+            // Prevent immediate duplicate firing within 1800ms
+            if (now - lastScanTimestampRef.current > 1800) {
+              lastScanTimestampRef.current = now;
+              handleProcessCode(code.data);
+            }
+          }
+        }
+      }
+
+      animationFrameRef.current = requestAnimationFrame(scanFrame);
+    };
+
+    animationFrameRef.current = requestAnimationFrame(scanFrame);
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [isCameraActive, existingSeats]);
+
   // Process a scanned or typed code
   const handleProcessCode = (rawInput: string) => {
     let code = rawInput.trim().toUpperCase();
     if (!code) return;
 
-    // Check if input is a URL or query containing a ticket code (e.g. ?ticket=GRAD69-0101 or /ticket/GRAD69-0101)
-    const ticketMatch = code.match(/GRAD69-[A-Z0-9]+/i);
+    // Check if input is a URL or query containing a ticket code (e.g. ?ticket=GRAD69-T04S01-42 or GRAD69-0101)
+    const ticketMatch = code.match(/GRAD69-[A-Z0-9_-]+/i);
     if (ticketMatch) {
       code = ticketMatch[0].toUpperCase();
     }
@@ -143,7 +208,7 @@ export const CheckInScanner: React.FC<CheckInScannerProps> = ({
     const foundSeat = existingSeats.find(s => {
       const tCode = (s.ticketCode || `GRAD69-${s.table}${s.seat}`).toUpperCase();
       if (tCode === code) return true;
-      if (code.includes(tCode)) return true;
+      if (code.includes(tCode) || tCode.includes(code)) return true;
       if (s.guestName.toUpperCase().includes(code)) return true;
       if (`${s.table}-${s.seat}` === code) return true;
       return false;

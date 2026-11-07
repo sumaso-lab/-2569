@@ -1,4 +1,4 @@
-export type AttendeeCategory = 'graduate' | 'faculty' | 'guest';
+export type AttendeeCategory = 'graduate' | 'faculty' | 'agn5' | 'guest';
 
 export interface GuestInfo {
   id: string;
@@ -7,6 +7,8 @@ export interface GuestInfo {
   phone?: string;
   email?: string;
   ticketCode?: string;
+  table?: number;
+  seat?: number;
 }
 
 export interface SeatAssignment {
@@ -21,6 +23,10 @@ export interface ExistingSeat {
   category: AttendeeCategory;
   ticketCode?: string;
   checkedIn?: boolean;
+  phone?: string;
+  email?: string;
+  reservationId?: string;
+  notes?: string;
 }
 
 export interface TableConfig {
@@ -45,6 +51,14 @@ export interface ReservationRecord {
   slipFileName?: string;
   slipUrl?: string;
   slipTimestamp: string;
-  status: 'verified' | 'pending';
+  status: 'verified' | 'pending' | 'rejected';
+  rejectionReason?: string;
   createdAt: string;
+  notes?: string;
+  emailSentImmediately?: boolean;
+  emailSentAt?: string;
+  reminderScheduled24h?: boolean;
+  reminderScheduledFor?: string;
+  reminderSent24h?: boolean;
 }
+

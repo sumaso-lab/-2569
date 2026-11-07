@@ -67,50 +67,70 @@ const [isAdmin, setIsAdmin] = useState(false);
     await refreshSeats();
   };
 
-  // Administrative changes require a separately authenticated server endpoint.
-  
-const handleToggleCheckIn = async (table: number, seat: number) => {
-  if (!isAdmin) {
-    window.alert('กรุณาเข้าสู่ระบบเจ้าหน้าที่ก่อน');
-    return;
-  }
-
-  const currentSeat = existingSeats.find(
-    (s) => s.table === table && s.seat === seat
-  );
-
-  if (!currentSeat) {
-    window.alert('ไม่พบข้อมูลที่นั่งนี้');
-    return;
-  }
-
-  try {
-    const { data, error } = await supabase.functions.invoke('admin-api', {
-      body: {
-        action: 'set-checkin',
-        table,
-        seat,
-        checkedIn: !currentSeat.checkedIn,
-      },
+  // Restore staff session on reload if active
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session) {
+        supabase.functions.invoke('admin-api', {
+          body: { action: 'verify-admin' },
+          headers: { Authorization: `Bearer ${data.session.access_token}` }
+        }).then(({ data: verifyData, error }) => {
+          if (!error && verifyData?.isAdmin) {
+            setIsAdmin(true);
+            void loadAdminReservations();
+          }
+        }).catch(() => {});
+      }
     });
+  }, []);
 
-    if (error || !data?.success) {
-      throw new Error('ไม่สามารถบันทึกการเช็กอินได้');
+  // Administrative changes require a separately authenticated server endpoint.
+  const handleToggleCheckIn = async (table: number, seat: number) => {
+    if (!isAdmin) {
+      window.alert('กรุณาเข้าสู่ระบบเจ้าหน้าที่ก่อน');
+      return;
     }
 
-    setExistingSeats((prev) =>
-      prev.map((s) =>
-        s.table === table && s.seat === seat
-          ? { ...s, checkedIn: data.seat.checked_in }
-          : s
-      )
+    const currentSeat = existingSeats.find(
+      (s) => s.table === table && s.seat === seat
     );
 
-    window.alert('บันทึกสถานะ Check-in สำเร็จ');
-  } catch (error) {
-    window.alert('เกิดข้อผิดพลาดในการเช็กอิน กรุณาลองใหม่');
-  }
-};
+    if (!currentSeat) {
+      window.alert('ไม่พบข้อมูลที่นั่งนี้');
+      return;
+    }
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+
+      const { data, error } = await supabase.functions.invoke('admin-api', {
+        body: {
+          action: 'set-checkin',
+          table,
+          seat,
+          checkedIn: !currentSeat.checkedIn,
+        },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      });
+
+      if (error || !data?.success) {
+        throw new Error(data?.error || 'ไม่สามารถบันทึกการเช็กอินได้');
+      }
+
+      setExistingSeats((prev) =>
+        prev.map((s) =>
+          s.table === table && s.seat === seat
+            ? { ...s, checkedIn: data.seat.checked_in }
+            : s
+        )
+      );
+
+      window.alert('บันทึกสถานะ Check-in สำเร็จ');
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการเช็กอิน กรุณาลองใหม่');
+    }
+  };
 
   const handleResetData = () => {
     window.alert('ไม่อนุญาตให้ลบข้อมูลการจองผ่านหน้าเว็บไซต์สาธารณะ');
@@ -182,11 +202,20 @@ const handleToggleCheckIn = async (table: number, seat: number) => {
 
         {/* Tab 4: QR Code Check-in & Live Seating Desk */}
         {activeTab === 'checkin' && (
-          <CheckInScanner
-            existingSeats={existingSeats}
-            onToggleCheckIn={handleToggleCheckIn}
-            onNavigateToFloorPlan={() => setActiveTab('floorplan')}
-          />
+          isAdmin ? (
+            <CheckInScanner
+              existingSeats={existingSeats}
+              onToggleCheckIn={handleToggleCheckIn}
+              onNavigateToFloorPlan={() => setActiveTab('floorplan')}
+            />
+          ) : (
+            <div className="max-w-md mx-auto space-y-4">
+              <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 text-center text-amber-900 text-xs sm:text-sm font-semibold">
+                🔒 จุดลงทะเบียนและสแกนเข้างานต้องเข้าสู่ระบบเจ้าหน้าที่ก่อนเพื่อยืนยันสิทธิ์ผ่าน Supabase Auth
+              </div>
+              <AdminLogin onSuccess={() => { setIsAdmin(true); void loadAdminReservations(); }} />
+            </div>
+          )
         )}
 
         {/* Tab 5: Admin Management Console */}

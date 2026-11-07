@@ -1,10 +1,12 @@
 import type { ExistingSeat, ReservationRecord } from './types';
 
-const base = import.meta.env.VITE_SUPABASE_URL;
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY;
-if (!base || !anon) throw new Error('Missing Supabase environment variables');
+const base = import.meta.env.VITE_SUPABASE_URL || '';
+const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 async function request<T>(name: string, payload?: unknown): Promise<T> {
+  if (!base || !anon) {
+    throw new Error('ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL หรือ VITE_SUPABASE_ANON_KEY ในระบบ');
+  }
   const response = await fetch(`${base}/functions/v1/${name}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },

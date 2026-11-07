@@ -468,7 +468,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
 
               {/* Total Calculation summary box */}
               <div className="mt-4 pt-3 border-t border-amber-200/80 flex items-center justify-between text-sm">
-                <span className="text-slate-700">ยอดรวมค่าลงทะเบียน ({guestCount} × 699 บาท):</span>
+                <span className="text-slate-700">ยอดรวมค่าลงทะเบียน ({guestCount} × 799 บาท):</span>
                 <span className="text-xl font-bold text-amber-800 tabular-nums">
                   {(guestCount * TICKET_PRICE).toLocaleString('th-TH')} บาท
                 </span>

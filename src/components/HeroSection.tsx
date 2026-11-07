@@ -78,7 +78,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 <span>มหาบัณฑิตพยาบาลศาสตร์ มหาวิทยาลัยขอนแก่น (ป.โท) ในชุดครุยผ้าโปร่งขาววิทยฐานะ</span>
               </span>
               <span className="text-slate-300 text-[11px] block">
-                ห้องแกรนด์บอลรูม โรงแรมราชาวดี ขอนแก่น · โต๊ะจีนหรู 15 โต๊ะ (โต๊ะละ 8 ที่นั่ง)
+                ห้องแกรนด์บอลรูม โรงแรมราชาวดี ขอนแก่น · โต๊ะจีนหรู 12 โต๊ะ (โต๊ะละ 8 ที่นั่ง · 96 ที่นั่ง)
               </span>
             </div>
             <span className="px-3 py-1 bg-amber-500/90 text-slate-950 font-bold rounded-full text-xs shadow hidden sm:inline-block">
@@ -89,7 +89,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
 
         <p className="text-slate-300 text-sm sm:text-base max-w-2xl mx-auto mb-8 leading-relaxed">
           ขอเชิญมหาบัณฑิตพยาบาล (ป.โท) ดุษฎีบัณฑิต คณาจารย์ และครอบครัวผู้มีเกียรติ ร่วมงานเลี้ยงฉลองความสำเร็จ
-          ณ โรงแรมราชาวดี ขอนแก่น พร้อมเปิดให้สำรองโต๊ะจีนและเลือกที่นั่งระบุบุคคลล่วงหน้า (โต๊ะละ 8 ที่นั่ง)
+          ณ โรงแรมราชาวดี ขอนแก่น พร้อมเปิดให้สำรองโต๊ะจีนและเลือกที่นั่งระบุบุคคลล่วงหน้า (12 โต๊ะ 96 ที่นั่ง)
         </p>
 
         {/* Key Event Badges */}
@@ -188,7 +188,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <div className="flex justify-between items-center text-xs mb-2">
             <span className="text-slate-300 flex items-center gap-1.5">
               <Users className="w-4 h-4 text-amber-400" />
-              <span>ความจุทั้งหมด: 15 โต๊ะ ({totalSeats} ที่นั่ง · โต๊ะละ 8 ที่)</span>
+              <span>ความจุทั้งหมด: 12 โต๊ะ ({totalSeats} ที่นั่ง · โต๊ะละ 8 ที่)</span>
             </span>
             <span className="text-amber-300 font-semibold">
               จองแล้ว {totalOccupied} ที่ ({percentBooked}%) · ว่าง {availableSeats} ที่
@@ -216,7 +216,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
             onClick={onViewFloorPlan}
             className="w-full sm:w-auto px-6 py-4 bg-slate-900/90 hover:bg-slate-800 text-slate-200 font-semibold rounded-2xl border border-slate-700 transition-all flex items-center justify-center gap-2"
           >
-            <span>ดูผังที่นั่งห้องจัดเลี้ยง (15 โต๊ะ)</span>
+            <span>ดูผังที่นั่งห้องจัดเลี้ยง (12 โต๊ะ)</span>
           </button>
         </div>
 
@@ -229,7 +229,7 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
           <span aria-hidden="true" className="text-slate-600">·</span>
           <span>ออกบัตร Digital Pass ทันที</span>
           <span aria-hidden="true" className="text-slate-600">·</span>
-          <span>สิทธิ์เลือกโต๊ะทันทีหลังแนบสลิป</span>
+          <span>สิทธิ์เลือกโต๊ะทันทีหลังเจ้าหน้าที่ตรวจสอบและอนุมัติสลิป</span>
         </div>
       </div>
     </section>

@@ -58,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <LayoutGrid className="w-4 h-4 text-amber-400/80" />
-            <span>ผังโรงแรมราชาวดี ขอนแก่น (15 โต๊ะ)</span>
+            <span>ผังโรงแรมราชาวดี ขอนแก่น (12 โต๊ะ)</span>
           </button>
 
           <button
@@ -90,14 +90,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           <button
             onClick={() => setActiveTab('admin')}
-            className={`transition-colors py-1 flex items-center gap-1.5 ${
+            className={`transition-all py-1 px-2.5 rounded-xl flex items-center gap-1.5 text-xs sm:text-sm font-semibold border ${
               activeTab === 'admin'
-                ? 'text-amber-300 font-semibold border-b-2 border-amber-400'
-                : 'text-slate-300 hover:text-white'
+                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md font-bold'
+                : 'bg-slate-800/80 text-amber-200 border-amber-500/40 hover:bg-slate-800 hover:text-white hover:border-amber-400'
             }`}
           >
-            <UserCheck className="w-4 h-4 text-amber-400/80" />
-            <span>ระบบเจ้าหน้าที่</span>
+            <UserCheck className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>ช่อง ระบบเจ้าหน้าที่: ตรวจสอบ · อนุมัติ · เเก้ไข</span>
           </button>
         </nav>
 
@@ -135,7 +135,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             activeTab === 'floorplan' ? 'bg-amber-400/20 text-amber-300 font-medium' : 'text-slate-400'
           }`}
         >
-          ผัง 15 โต๊ะ
+          ผัง 12 โต๊ะ
         </button>
         <button
           onClick={() => setActiveTab('search')}
@@ -156,11 +156,12 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('admin')}
-          className={`px-2.5 py-1 rounded-md whitespace-nowrap ${
-            activeTab === 'admin' ? 'bg-amber-400/20 text-amber-300 font-medium' : 'text-slate-400'
+          className={`px-2.5 py-1 rounded-md whitespace-nowrap font-bold flex items-center gap-1 ${
+            activeTab === 'admin' ? 'bg-amber-400 text-slate-950 shadow' : 'bg-slate-900 text-amber-300 border border-amber-500/30'
           }`}
         >
-          เจ้าหน้าที่
+          <UserCheck className="w-3 h-3" />
+          <span>จนท. ตรวจสอบ·อนุมัติ·แก้ไข</span>
         </button>
       </div>
     </header>
