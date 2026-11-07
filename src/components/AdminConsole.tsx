@@ -24,11 +24,15 @@ import {
   PhoneCall,
   LayoutGrid,
   Mail,
-  Clock,
   FlaskConical,
-  ExternalLink
+  ExternalLink,
+  FileText,
+  FolderOpen,
+  FileCheck2,
+  Printer,
+  Paperclip
 } from 'lucide-react';
-import { ExistingSeat, ReservationRecord, AttendeeCategory, GuestInfo } from '../types';
+import { ExistingSeat, ReservationRecord, AttendeeCategory, GuestInfo, AttachedDocument } from '../types';
 import {
   TABLES,
   getAdminPasscode,
@@ -44,6 +48,11 @@ import {
   EmailDispatchRecord
 } from '../utils/emailService';
 import { generateRealisticSlipDataUrl } from '../utils/slipGenerator';
+import {
+  getReservationDocuments,
+  getAllAttachedDocuments,
+  EnrichedAttachedDocument
+} from '../utils/documentHelper';
 
 interface AdminConsoleProps {
   existingSeats: ExistingSeat[];
@@ -86,8 +95,8 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   const [newPasscode, setNewPasscode] = useState('');
   const [passcodeSuccessMsg, setPasscodeSuccessMsg] = useState('');
 
-  // Active Admin Tab: slips | roster | floorplan | addGuest | emails | settings
-  const [activeTab, setActiveTab] = useState<'slips' | 'roster' | 'floorplan' | 'addGuest' | 'emails' | 'settings'>('slips');
+  // Active Admin Tab: slips | docs | roster | floorplan | addGuest | emails | settings
+  const [activeTab, setActiveTab] = useState<'slips' | 'docs' | 'roster' | 'floorplan' | 'addGuest' | 'emails' | 'settings'>('slips');
   const [emailLogs, setEmailLogs] = useState<EmailDispatchRecord[]>(() => getEmailDispatchLogs());
 
   // Filter & Search States
@@ -96,8 +105,19 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn'>('all');
   const [slipFilter, setSlipFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
 
+  // All Documents Gallery Filters
+  const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'slip' | 'voucher' | 'other'>('all');
+  const [docStatusFilter, setDocStatusFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
+  const [docSearchTerm, setDocSearchTerm] = useState('');
+  const [docViewMode, setDocViewMode] = useState<'grid' | 'table'>('grid');
+
   // Modal States
   const [selectedTicketSeat, setSelectedTicketSeat] = useState<ExistingSeat | null>(null);
+  const [previewDocumentModal, setPreviewDocumentModal] = useState<{
+    reservation: ReservationRecord;
+    documents: AttachedDocument[];
+    activeDocIndex: number;
+  } | null>(null);
   const [previewSlipUrl, setPreviewSlipUrl] = useState<{ url: string; title: string; reservation?: ReservationRecord } | null>(null);
   const [emailModalSeat, setEmailModalSeat] = useState<ExistingSeat | null>(null);
 
@@ -506,6 +526,34 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
     }
     return true;
   });
+
+  // All Attached Documents across all bookings
+  const allAttachedDocs: EnrichedAttachedDocument[] = getAllAttachedDocuments(allReservations);
+
+  // Filtered Documents in Gallery Tab
+  const filteredDocs = allAttachedDocs.filter(doc => {
+    if (docTypeFilter !== 'all' && doc.type !== docTypeFilter) return false;
+    if (docStatusFilter !== 'all' && doc.reservationStatus !== docStatusFilter) return false;
+    if (docSearchTerm.trim()) {
+      const q = docSearchTerm.toLowerCase();
+      return (
+        doc.name.toLowerCase().includes(q) ||
+        doc.bookerName.toLowerCase().includes(q) ||
+        doc.reservationId.toLowerCase().includes(q) ||
+        doc.phone.includes(q)
+      );
+    }
+    return true;
+  });
+
+  const handleOpenDocumentViewer = (reservation: ReservationRecord, initialDocIndex = 0) => {
+    const docs = getReservationDocuments(reservation);
+    setPreviewDocumentModal({
+      reservation,
+      documents: docs,
+      activeDocIndex: Math.min(Math.max(0, initialDocIndex), docs.length - 1)
+    });
+  };
 
   // Handle Staff Test Cases
   const handleAddTestCase = (type: 'pending_single' | 'pending_multi' | 'verified_single') => {
@@ -973,6 +1021,22 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
 
           <button
             type="button"
+            onClick={() => setActiveTab('docs')}
+            className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer ${
+              activeTab === 'docs'
+                ? 'bg-amber-400 text-slate-950 shadow-md'
+                : 'bg-slate-900 text-slate-300 hover:bg-slate-800 border border-slate-800'
+            }`}
+          >
+            <FolderOpen className="w-4 h-4" />
+            <span>📑 เอกสารแนบทั้งหมด</span>
+            <span className="px-2 py-0.5 rounded-full bg-slate-800 text-amber-300 text-[10px] font-bold border border-amber-400/40">
+              {allAttachedDocs.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
             onClick={() => setActiveTab('roster')}
             className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer ${
               activeTab === 'roster'
@@ -1179,13 +1243,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
             ) : (
               filteredReservations.map(res => {
                 const hasAssignedSeats = res.assignments && Object.keys(res.assignments).length > 0;
-                const slipSource = res.slipUrl || generateRealisticSlipDataUrl({
-                  bank: (res.id.charCodeAt(0) % 2 === 0) ? 'SCB' : 'KBANK',
-                  bookerName: res.mainBooker,
-                  amount: (res.guestCount || 1) * TICKET_PRICE,
-                  refId: `REF-${res.id.slice(-6).toUpperCase()}`,
-                  dateStr: res.slipTimestamp || res.createdAt || '20 ธ.ค. 2569 14:00 น.'
-                });
+                const docs = getReservationDocuments(res);
 
                 return (
                   <div
@@ -1198,31 +1256,35 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                         : 'border-rose-200 bg-rose-50/20'
                     }`}
                   >
-                    <div className="flex items-start gap-4">
-                      {/* Thumbnail of slip (Always viewable!) */}
-                      <button
-                        type="button"
-                        onClick={() => setPreviewSlipUrl({
-                          url: slipSource,
-                          title: `สลิปโอนเงิน: ${res.mainBooker} (ยอด ${(res.guestCount * TICKET_PRICE).toLocaleString()} บ.)`,
-                          reservation: res
-                        })}
-                        className="w-20 h-26 rounded-xl overflow-hidden border-2 border-amber-400/50 shadow-md shrink-0 bg-slate-900 hover:opacity-90 relative group cursor-pointer"
-                        title="คลิกเพื่อเปิดดูสลิปความละเอียดสูง"
-                      >
-                        <img
-                          src={slipSource}
-                          alt="สลิปโอนเงิน"
-                          className="w-full h-full object-cover"
-                        />
-                        <div className="absolute inset-0 bg-slate-950/70 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] transition-opacity font-semibold p-1 text-center">
-                          <Eye className="w-4 h-4 text-amber-400 mb-0.5" />
-                          <span>เปิดดูสลิป</span>
-                        </div>
-                      </button>
+                    <div className="flex items-start gap-3 sm:gap-4 flex-wrap sm:flex-nowrap">
+                      {/* Thumbnails of All Attached Documents */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {docs.map((doc, docIdx) => (
+                          <button
+                            key={doc.id}
+                            type="button"
+                            onClick={() => handleOpenDocumentViewer(res, docIdx)}
+                            className="w-16 sm:w-20 h-22 sm:h-26 rounded-xl overflow-hidden border-2 border-amber-400/50 shadow-md bg-slate-900 hover:opacity-90 relative group cursor-pointer"
+                            title={`เปิดดู ${doc.name}`}
+                          >
+                            <img
+                              src={doc.url}
+                              alt={doc.name}
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute inset-0 bg-slate-950/75 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-white text-[10px] transition-opacity font-semibold p-1 text-center">
+                              <Eye className="w-4 h-4 text-amber-400 mb-0.5" />
+                              <span>{doc.type === 'slip' ? 'สลิป' : 'ใบยืนยัน'}</span>
+                            </div>
+                            <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-slate-900/90 text-amber-300 text-[9px] font-bold font-mono">
+                              #{docIdx + 1}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
 
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                             {res.id}
                           </span>
@@ -1240,6 +1302,11 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                               : res.status === 'verified'
                               ? '✓ อนุมัติแล้ว'
                               : '✕ ปฏิเสธสลิป'}
+                          </span>
+
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-semibold flex items-center gap-1">
+                            <Paperclip className="w-3 h-3" />
+                            <span>เอกสารแนบ {docs.length} ไฟล์</span>
                           </span>
 
                           {hasAssignedSeats ? (
@@ -1274,15 +1341,11 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                     <div className="flex flex-wrap items-center gap-2 shrink-0">
                       <button
                         type="button"
-                        onClick={() => setPreviewSlipUrl({
-                          url: slipSource,
-                          title: `ตรวจสลิป: ${res.mainBooker} (ยอด ${(res.guestCount * TICKET_PRICE).toLocaleString()} บ.)`,
-                          reservation: res
-                        })}
+                        onClick={() => handleOpenDocumentViewer(res, 0)}
                         className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-sm transition-all cursor-pointer"
                       >
-                        <Eye className="w-3.5 h-3.5 text-slate-950" />
-                        <span>1. ตรวจสอบสลิปจริง</span>
+                        <FolderOpen className="w-3.5 h-3.5 text-slate-950" />
+                        <span>1. เปิดดูเอกสารทั้งหมด ({docs.length})</span>
                       </button>
 
                       {res.status !== 'verified' ? (

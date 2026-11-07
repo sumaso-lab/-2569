@@ -37,6 +37,16 @@ export interface TableConfig {
   description: string;
 }
 
+export interface AttachedDocument {
+  id: string;
+  name: string;
+  type: 'slip' | 'id_card' | 'receipt' | 'voucher' | 'other';
+  url: string;
+  uploadedAt: string;
+  size?: string;
+  status?: 'verified' | 'pending' | 'rejected';
+}
+
 export interface ReservationRecord {
   id: string;
   mainBooker: string;
@@ -51,6 +61,7 @@ export interface ReservationRecord {
   slipFileName?: string;
   slipUrl?: string;
   slipTimestamp: string;
+  attachedDocuments?: AttachedDocument[];
   status: 'verified' | 'pending' | 'rejected';
   rejectionReason?: string;
   createdAt: string;
