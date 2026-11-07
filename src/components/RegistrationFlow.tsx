@@ -21,7 +21,8 @@ import {
   ShieldCheck,
   FileCheck,
   FlaskConical,
-  FileText
+  FileText,
+  Download
 } from 'lucide-react';
 import {
   GuestInfo,
@@ -37,6 +38,7 @@ import { ChineseBanquetTable } from './ChineseBanquetTable';
 import { EmailTicketModal } from './EmailTicketModal';
 import { DigitalPassCard } from './DigitalPassCard';
 import { uploadPaymentDocument } from '../bookingApi';
+import { downloadFileFromUrl } from '../utils/documentHelper';
 
 interface RegistrationFlowProps {
   existingSeats: ExistingSeat[];
@@ -1432,17 +1434,27 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                 />
               )}
             </div>
-            <div className="pt-2 flex items-center justify-between text-xs text-slate-400">
+            <div className="pt-2 flex items-center justify-between text-xs text-slate-400 flex-wrap gap-2">
               <span>หลักฐานสลิปสำหรับตรวจสอบยอดโอน 799 บ./ท่าน</span>
-              <a
-                href={previewModalSlipUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-amber-400 hover:underline flex items-center gap-1"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>เปิดแท็บใหม่ / ดาวน์โหลด</span>
-              </a>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => downloadFileFromUrl(previewModalSlipUrl, slipFile?.name || 'payment_slip.jpg')}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow transition-colors cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-950" />
+                  <span>ดาวน์โหลดไฟล์</span>
+                </button>
+                <a
+                  href={previewModalSlipUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-xl text-xs flex items-center gap-1.5 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                  <span>เปิดเต็มจอ (แท็บใหม่)</span>
+                </a>
+              </div>
             </div>
           </div>
         </div>

@@ -211,3 +211,46 @@ export function getAllAttachedDocuments(reservations: ReservationRecord[]): Enri
 
   return result;
 }
+
+/**
+ * Downloads a file directly from a URL (Data URL, Blob, or cross-origin Signed URL)
+ * by fetching the blob and creating an object URL to guarantee local disk saving.
+ */
+export async function downloadFileFromUrl(url: string, filename: string): Promise<void> {
+  if (!url) return;
+
+  if (url.startsWith('data:')) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
+
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('Fetch failed');
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+  } catch (err) {
+    // Fallback: Open in new window or directly trigger anchor
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
+

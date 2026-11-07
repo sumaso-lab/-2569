@@ -31,7 +31,11 @@ import {
   FileCheck2,
   Printer,
   Paperclip,
-  Clock
+  Clock,
+  ZoomIn,
+  ZoomOut,
+  Maximize2,
+  RotateCcw
 } from 'lucide-react';
 import { ExistingSeat, ReservationRecord, AttendeeCategory, GuestInfo, AttachedDocument } from '../types';
 import {
@@ -52,7 +56,8 @@ import { generateRealisticSlipDataUrl } from '../utils/slipGenerator';
 import {
   getReservationDocuments,
   getAllAttachedDocuments,
-  EnrichedAttachedDocument
+  EnrichedAttachedDocument,
+  downloadFileFromUrl
 } from '../utils/documentHelper';
 import { dispatchTicketEmail, getDocumentSignedUrl } from '../bookingApi';
 
@@ -133,6 +138,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   // Signed URL State for Viewing Private Storage Files
   const [signedUrlLoading, setSignedUrlLoading] = useState(false);
   const [activeSignedUrl, setActiveSignedUrl] = useState<string>('');
+  const [imageZoomLevel, setImageZoomLevel] = useState<number>(1);
 
   // Staff Test Cases in Sandbox (Persisted in localStorage for convenience)
   const [testCases, setTestCases] = useState<ReservationRecord[]>(() => {
@@ -1534,6 +1540,290 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
               })
             )}
           </div>
+        </div>
+      )}
+
+      {/* ================= TAB: ATTACHED DOCUMENTS GALLERY (📑 เอกสารแนบทั้งหมด) ================= */}
+      {activeTab === 'docs' && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-amber-500/20 shadow-xl space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <FolderOpen className="w-5 h-5 text-amber-600" />
+                <h3 className="font-serif-thai text-xl font-bold text-slate-900">
+                  คลังเอกสารแนบทั้งหมด (Attached Documents Gallery)
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-bold border border-amber-300">
+                  {filteredDocs.length} ฉบับ
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                เปิดดูสลิปและเอกสารแนบจริง (รองรับทั้งไฟล์ PDF และรูปภาพ JPG, JPEG, PNG) พร้อมปุ่มดาวน์โหลดไฟล์ต้นฉบับ
+              </p>
+            </div>
+
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setDocViewMode('grid')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  docViewMode === 'grid'
+                    ? 'bg-amber-500 text-slate-950 shadow'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+                <span>มุมมองการ์ด</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDocViewMode('table')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  docViewMode === 'table'
+                    ? 'bg-amber-500 text-slate-950 shadow'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>มุมมองตาราง</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Filter Bar */}
+          <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-200">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="ค้นหาตามชื่อผู้จอง, เบอร์โทร, รหัสจอง, หรือชื่อเอกสาร..."
+                value={docSearchTerm}
+                onChange={e => setDocSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-white rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-amber-500 outline-none"
+              />
+              {docSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setDocSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={docTypeFilter}
+                onChange={e => setDocTypeFilter(e.target.value as any)}
+                className="px-3 py-2 bg-white rounded-xl border border-slate-300 text-xs text-slate-700 font-semibold focus:ring-2 focus:ring-amber-500 outline-none"
+              >
+                <option value="all">ชนิดเอกสาร: ทั้งหมด</option>
+                <option value="slip">สลิปโอนเงิน (Slip)</option>
+                <option value="voucher">หนังสือยืนยันการจอง (Voucher)</option>
+              </select>
+
+              <select
+                value={docStatusFilter}
+                onChange={e => setDocStatusFilter(e.target.value as any)}
+                className="px-3 py-2 bg-white rounded-xl border border-slate-300 text-xs text-slate-700 font-semibold focus:ring-2 focus:ring-amber-500 outline-none"
+              >
+                <option value="all">สถานะ: ทั้งหมด</option>
+                <option value="pending">⏳ รอตรวจสอบ</option>
+                <option value="verified">✓ อนุมัติแล้ว</option>
+                <option value="rejected">✕ ปฏิเสธ</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Document Content */}
+          {filteredDocs.length === 0 ? (
+            <div className="text-center py-16 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+              <FileCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="font-semibold text-slate-600 text-sm">ไม่พบเอกสารที่ตรงกับเงื่อนไขการค้นหา</p>
+              <p className="text-xs text-slate-400 mt-1">ลองล้างตัวกรองหรือเปลี่ยนคำค้นหา</p>
+            </div>
+          ) : docViewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredDocs.map((doc) => {
+                const isPdf = doc.mimeType === 'application/pdf' || doc.url.includes('.pdf') || doc.name.toLowerCase().endsWith('.pdf');
+                const parentRes = allReservations.find(r => r.id === doc.reservationId);
+
+                return (
+                  <div
+                    key={doc.id}
+                    className="bg-white rounded-2xl border border-slate-200 hover:border-amber-400 shadow-sm hover:shadow-md transition-all overflow-hidden flex flex-col justify-between"
+                  >
+                    <div>
+                      {/* Thumbnail Header */}
+                      <div className="relative bg-slate-900 h-44 flex items-center justify-center p-3 overflow-hidden border-b border-slate-100">
+                        {!doc.hasRealFile ? (
+                          <div className="text-center p-4 space-y-1">
+                            <AlertCircle className="w-10 h-10 text-amber-400 mx-auto" />
+                            <span className="text-xs font-bold text-amber-300 block">⚠️ ไม่พบไฟล์จริงใน Storage</span>
+                            <span className="text-[10px] text-slate-400 block">ยังไม่มีการอัปโหลดไฟล์จริง</span>
+                          </div>
+                        ) : isPdf ? (
+                          <div className="text-center p-4 space-y-2">
+                            <div className="w-14 h-14 rounded-2xl bg-red-500/20 text-red-400 flex items-center justify-center mx-auto border border-red-500/40">
+                              <FileText className="w-8 h-8 text-red-400" />
+                            </div>
+                            <span className="text-xs font-bold text-white block truncate max-w-[200px]">
+                              {doc.name}
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-red-950 text-red-300 font-mono">
+                              PDF DOCUMENT
+                            </span>
+                          </div>
+                        ) : (
+                          <img
+                            src={doc.url}
+                            alt={doc.name}
+                            className="max-h-full max-w-full object-contain rounded-lg shadow-sm"
+                          />
+                        )}
+
+                        <div className="absolute top-2.5 right-2.5">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded shadow ${
+                            doc.reservationStatus === 'verified'
+                              ? 'bg-emerald-600 text-white'
+                              : doc.reservationStatus === 'pending'
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-rose-600 text-white'
+                          }`}>
+                            {doc.reservationStatus === 'verified'
+                              ? 'อนุมัติแล้ว'
+                              : doc.reservationStatus === 'pending'
+                              ? 'รอตรวจ'
+                              : 'ปฏิเสธ'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Card Body */}
+                      <div className="p-4 space-y-2 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[11px] font-bold text-amber-700">
+                            {doc.reservationId}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            {doc.uploadedAt}
+                          </span>
+                        </div>
+
+                        <h4 className="font-bold text-slate-900 text-sm truncate">
+                          {doc.bookerName}
+                        </h4>
+
+                        <div className="text-[11px] text-slate-500 space-y-0.5">
+                          <div>โทร: <strong className="text-slate-700">{doc.phone}</strong></div>
+                          <div>เอกสาร: <span className="text-slate-700 font-medium truncate block">{doc.name}</span></div>
+                          <div>ยอดเงิน: <strong className="text-amber-800 font-bold">{doc.totalAmount.toLocaleString()} บาท</strong> ({doc.guestCount} ท่าน)</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Actions */}
+                    <div className="p-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (parentRes) {
+                            handleOpenDocumentViewer(parentRes, doc.type === 'voucher' ? 1 : 0);
+                          }
+                        }}
+                        className="flex-1 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-amber-400" />
+                        <span>เปิดดูเอกสาร</span>
+                      </button>
+
+                      {doc.hasRealFile && doc.url && (
+                        <button
+                          type="button"
+                          onClick={() => downloadFileFromUrl(doc.url, doc.name || 'document')}
+                          className="p-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-xl transition-colors cursor-pointer"
+                          title="ดาวน์โหลดไฟล์ต้นฉบับ"
+                        >
+                          <Download className="w-4 h-4 text-slate-700" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            /* Table View */
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-xs text-left text-slate-600">
+                <thead className="bg-slate-50 text-slate-700 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
+                  <tr>
+                    <th className="p-3">ชนิดเอกสาร</th>
+                    <th className="p-3">ผู้จองหลัก</th>
+                    <th className="p-3">รหัสจอง</th>
+                    <th className="p-3">เบอร์โทร</th>
+                    <th className="p-3">ยอดชำระ</th>
+                    <th className="p-3">สถานะ</th>
+                    <th className="p-3 text-right">การจัดการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredDocs.map((doc) => {
+                    const parentRes = allReservations.find(r => r.id === doc.reservationId);
+                    return (
+                      <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-3 font-semibold text-slate-900 flex items-center gap-2">
+                          <FileText className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span className="truncate max-w-[200px]">{doc.name}</span>
+                        </td>
+                        <td className="p-3 font-bold text-slate-900">{doc.bookerName}</td>
+                        <td className="p-3 font-mono font-bold text-amber-700">{doc.reservationId}</td>
+                        <td className="p-3">{doc.phone}</td>
+                        <td className="p-3 font-bold text-amber-800">{doc.totalAmount.toLocaleString()} ฿</td>
+                        <td className="p-3">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                            doc.reservationStatus === 'verified'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : doc.reservationStatus === 'pending'
+                              ? 'bg-amber-100 text-amber-800'
+                              : 'bg-rose-100 text-rose-800'
+                          }`}>
+                            {doc.reservationStatus === 'verified' ? 'อนุมัติแล้ว' : doc.reservationStatus === 'pending' ? 'รอตรวจ' : 'ปฏิเสธ'}
+                          </span>
+                        </td>
+                        <td className="p-3 text-right space-x-1 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (parentRes) {
+                                handleOpenDocumentViewer(parentRes, doc.type === 'voucher' ? 1 : 0);
+                              }
+                            }}
+                            className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-amber-300 font-bold rounded-lg text-xs inline-flex items-center gap-1 cursor-pointer"
+                          >
+                            <Eye className="w-3.5 h-3.5 text-amber-400" />
+                            <span>เปิดดู</span>
+                          </button>
+                          {doc.hasRealFile && doc.url && (
+                            <button
+                              type="button"
+                              onClick={() => downloadFileFromUrl(doc.url, doc.name || 'document')}
+                              className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                              title="ดาวน์โหลดไฟล์ต้นฉบับ"
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
@@ -2970,32 +3260,100 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-              {/* Left: The Real Slip Image */}
+              {/* Left: The Real Slip Viewer (PDF Frame or High-Res Image) */}
               <div className="flex flex-col items-center justify-center bg-slate-950/70 p-4 rounded-2xl border border-slate-800">
-                <img
-                  src={previewSlipUrl.url}
-                  alt="สลิปโอนเงินความละเอียดสูง"
-                  className="max-h-[58vh] w-auto rounded-xl shadow-2xl object-contain border border-slate-700"
-                />
-                <div className="mt-3 flex items-center gap-2">
-                  <a
-                    href={previewSlipUrl.url}
-                    download={`slip_${Date.now()}.svg`}
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
-                  >
-                    <Download className="w-3.5 h-3.5 text-amber-400" />
-                    <span>ดาวน์โหลดสลิป</span>
-                  </a>
-                  <a
-                    href={previewSlipUrl.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
-                    <span>เปิดแท็บใหม่</span>
-                  </a>
-                </div>
+                {previewSlipUrl.url.includes('.pdf') || previewSlipUrl.title.toLowerCase().endsWith('.pdf') ? (
+                  <div className="w-full">
+                    <iframe
+                      src={previewSlipUrl.url}
+                      title={previewSlipUrl.title}
+                      className="w-full h-[56vh] rounded-xl border border-slate-700 bg-white shadow-2xl"
+                    />
+                    <div className="mt-3 flex items-center gap-2 justify-center">
+                      <button
+                        type="button"
+                        onClick={() => downloadFileFromUrl(previewSlipUrl.url, previewSlipUrl.title || 'slip.pdf')}
+                        className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs rounded-xl flex items-center gap-1.5 font-bold transition-colors cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-slate-950" />
+                        <span>ดาวน์โหลดไฟล์ต้นฉบับ (PDF)</span>
+                      </button>
+                      <a
+                        href={previewSlipUrl.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                        <span>เปิดดู PDF เต็มจอ</span>
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="w-full flex flex-col items-center">
+                    <div className="max-h-[56vh] w-full overflow-auto rounded-xl border border-slate-700 bg-slate-950 flex items-center justify-center p-2">
+                      <img
+                        src={previewSlipUrl.url}
+                        alt="สลิปโอนเงินความละเอียดสูง"
+                        style={{
+                          transform: `scale(${imageZoomLevel})`,
+                          transition: 'transform 0.2s ease',
+                          transformOrigin: 'center center'
+                        }}
+                        className="max-h-[52vh] w-auto rounded-lg shadow-2xl object-contain"
+                      />
+                    </div>
+                    <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
+                      <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
+                        <button
+                          type="button"
+                          onClick={() => setImageZoomLevel(prev => Math.max(0.5, prev - 0.25))}
+                          className="p-1 text-slate-300 hover:text-white rounded"
+                          title="ซูมออก"
+                        >
+                          <ZoomOut className="w-3.5 h-3.5" />
+                        </button>
+                        <span className="text-[10px] font-mono text-amber-300 px-1 font-bold">
+                          {Math.round(imageZoomLevel * 100)}%
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setImageZoomLevel(prev => Math.min(3, prev + 0.25))}
+                          className="p-1 text-slate-300 hover:text-white rounded"
+                          title="ซูมเข้า"
+                        >
+                          <ZoomIn className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setImageZoomLevel(1)}
+                          className="p-1 text-slate-400 hover:text-white rounded"
+                          title="รีเซ็ตขนาด"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => downloadFileFromUrl(previewSlipUrl.url, previewSlipUrl.title || 'slip.jpg')}
+                        className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs rounded-xl flex items-center gap-1.5 font-bold transition-colors cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-slate-950" />
+                        <span>ดาวน์โหลดสลิปต้นฉบับ</span>
+                      </button>
+                      <a
+                        href={previewSlipUrl.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
+                        <span>เปิดภาพต้นฉบับเต็มจอ</span>
+                      </a>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Right: Verification Details & Action Buttons */}
@@ -3269,40 +3627,99 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                   return (
                     <div className="w-full flex flex-col items-center">
                       {isPdf ? (
-                        <iframe
-                          src={displayUrl}
-                          title={activeDoc.name}
-                          className="w-full h-[54vh] rounded-xl border border-slate-700 bg-white shadow-xl"
-                        />
+                        <div className="w-full flex flex-col items-center">
+                          <div className="w-full h-[56vh] rounded-xl overflow-hidden border border-slate-700 bg-white shadow-2xl relative">
+                            <iframe
+                              src={displayUrl}
+                              title={activeDoc.name}
+                              className="w-full h-full border-0"
+                            />
+                          </div>
+                          <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
+                            <button
+                              type="button"
+                              onClick={() => downloadFileFromUrl(displayUrl, activeDoc.name || 'document.pdf')}
+                              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs rounded-xl flex items-center gap-1.5 font-bold shadow transition-all cursor-pointer"
+                            >
+                              <Download className="w-4 h-4 text-slate-950" />
+                              <span>ดาวน์โหลดไฟล์ต้นฉบับ (PDF)</span>
+                            </button>
+                            <a
+                              href={displayUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                            >
+                              <ExternalLink className="w-4 h-4 text-amber-400" />
+                              <span>เปิดดู PDF เต็มจอ (แท็บใหม่)</span>
+                            </a>
+                          </div>
+                        </div>
                       ) : (
-                        <img
-                          src={displayUrl}
-                          alt={activeDoc.name}
-                          className="max-h-[54vh] w-auto rounded-xl shadow-2xl object-contain border border-slate-700 bg-slate-900"
-                        />
-                      )}
+                        <div className="w-full flex flex-col items-center">
+                          <div className="max-h-[56vh] w-full overflow-auto rounded-xl border border-slate-700 bg-slate-950 flex items-center justify-center p-2">
+                            <img
+                              src={displayUrl}
+                              alt={activeDoc.name}
+                              style={{
+                                transform: `scale(${imageZoomLevel})`,
+                                transition: 'transform 0.2s ease',
+                                transformOrigin: 'center center'
+                              }}
+                              className="max-h-[52vh] w-auto rounded-lg shadow-2xl object-contain"
+                            />
+                          </div>
+                          <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
+                            <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-xl p-1">
+                              <button
+                                type="button"
+                                onClick={() => setImageZoomLevel(prev => Math.max(0.5, prev - 0.25))}
+                                className="p-1 text-slate-300 hover:text-white rounded"
+                                title="ซูมออก"
+                              >
+                                <ZoomOut className="w-3.5 h-3.5" />
+                              </button>
+                              <span className="text-[10px] font-mono text-amber-300 px-1 font-bold">
+                                {Math.round(imageZoomLevel * 100)}%
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setImageZoomLevel(prev => Math.min(3, prev + 0.25))}
+                                className="p-1 text-slate-300 hover:text-white rounded"
+                                title="ซูมเข้า"
+                              >
+                                <ZoomIn className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setImageZoomLevel(1)}
+                                className="p-1 text-slate-400 hover:text-white rounded"
+                                title="รีเซ็ตขนาด"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
 
-                      <div className="mt-3 flex items-center gap-2 flex-wrap justify-center">
-                        <a
-                          href={displayUrl}
-                          download={activeDoc.name || 'document'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5 text-amber-400" />
-                          <span>ดาวน์โหลดไฟล์ต้นฉบับ</span>
-                        </a>
-                        <a
-                          href={displayUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 text-amber-400" />
-                          <span>เปิดดูเต็มจอในแท็บใหม่</span>
-                        </a>
-                      </div>
+                            <button
+                              type="button"
+                              onClick={() => downloadFileFromUrl(displayUrl, activeDoc.name || 'slip.jpg')}
+                              className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs rounded-xl flex items-center gap-1.5 font-bold shadow transition-all cursor-pointer"
+                            >
+                              <Download className="w-4 h-4 text-slate-950" />
+                              <span>ดาวน์โหลดสลิปต้นฉบับ</span>
+                            </button>
+                            <a
+                              href={displayUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl flex items-center gap-1.5 font-semibold transition-colors cursor-pointer"
+                            >
+                              <Maximize2 className="w-4 h-4 text-amber-400" />
+                              <span>เปิดภาพต้นฉบับเต็มจอ</span>
+                            </a>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
