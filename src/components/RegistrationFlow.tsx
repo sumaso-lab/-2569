@@ -10,7 +10,6 @@ import {
   Printer,
   Copy,
   Check,
-  QrCode,
   Sparkles,
   Mail,
   PhoneCall,
@@ -88,6 +87,13 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   const [assignments, setAssignments] = useState<Record<number, SeatAssignment>>({});
   const [activeGuestSelectIndex, setActiveGuestSelectIndex] = useState<number>(0);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedAccount, setCopiedAccount] = useState(false);
+
+  const handleCopyAccount = () => {
+    navigator.clipboard.writeText('5514261851');
+    setCopiedAccount(true);
+    setTimeout(() => setCopiedAccount(false), 2000);
+  };
 
   // Completed reservation record
   const [confirmedReservation, setConfirmedReservation] = useState<ReservationRecord | null>(null);
@@ -685,50 +691,74 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
                   </span>
                 </div>
 
-                <div className="space-y-2.5 pt-4 border-t border-slate-800 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">ธนาคาร:</span>
-                    <span className="font-medium text-slate-100">ธนาคารกรุงไทย (Krungthai)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">ชื่อบัญชี:</span>
-                    <span className="font-medium text-slate-100">โครงการยินดีบัณฑิต</span>
-                  </div>
+                <div className="space-y-3 pt-4 border-t border-slate-800 text-sm">
                   <div className="flex justify-between items-center">
-                    <span className="text-slate-400">เลขที่บัญชี:</span>
-                    <span className="font-mono text-base font-bold text-amber-200 tracking-wider">
-                      รอผู้จัดงานยืนยันบัญชี
+                    <span className="text-slate-400">ธนาคาร:</span>
+                    <span className="font-semibold text-slate-100 flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block" />
+                      ธนาคารไทยพาณิชย์ (SCB)
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">ผู้จอง:</span>
-                    <span className="text-slate-200">{bookerName}</span>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400">ชื่อบัญชี:</span>
+                    <span className="font-medium text-slate-100">นายชยณัฐ / น.ส.สุมาลี</span>
+                  </div>
+                  <div className="flex justify-between items-center bg-slate-800/80 p-3 rounded-xl border border-slate-700">
+                    <div>
+                      <span className="text-xs text-slate-400 block mb-0.5">เลขที่บัญชี:</span>
+                      <span className="font-mono text-lg font-bold text-amber-300 tracking-wider">
+                        551-426185-1
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyAccount}
+                      className="px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-semibold border border-amber-400/40 flex items-center gap-1.5 transition-all cursor-pointer"
+                    >
+                      {copiedAccount ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">คัดลอกแล้ว</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>คัดลอกเลขบัญชี</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-slate-400">ผู้ทำการจอง:</span>
+                    <span className="text-slate-200 font-medium">{bookerName}</span>
                   </div>
                 </div>
               </div>
 
-              {/* PromptPay QR Code Mock with scan instructions */}
-              <div className="p-5 rounded-2xl border border-slate-200 bg-slate-50 text-center">
-                <span className="text-xs font-semibold text-slate-600 block mb-3">
-                  QR ด้านล่างเป็นภาพประกอบ ไม่สามารถใช้ชำระเงินได้
-                </span>
-                <div className="inline-block p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
-                  {/* Generated QR Code styling */}
-                  <div className="w-40 h-40 bg-slate-900 p-2 rounded-xl flex flex-col items-center justify-center relative overflow-hidden">
-                    <div className="w-full h-full bg-[radial-gradient(#ffffff_2px,transparent_2px)] [background-size:8px_8px] opacity-80" />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <div className="w-10 h-10 rounded-full bg-white p-1 shadow flex items-center justify-center">
-                        <QrCode className="w-6 h-6 text-slate-900" />
-                      </div>
-                      <span className="text-[10px] text-amber-300 font-bold mt-1 bg-slate-950/80 px-2 py-0.5 rounded">
-                        ฿{guestCount * TICKET_PRICE}
-                      </span>
-                    </div>
-                  </div>
+              {/* Payment Instructions (Replaced sample QR) */}
+              <div className="p-5 rounded-2xl border border-amber-200/80 bg-amber-50/60 text-slate-800 space-y-3">
+                <div className="flex items-center gap-2 text-amber-900 font-bold text-sm">
+                  <CreditCard className="w-4 h-4 text-amber-700" />
+                  <span>ขั้นตอนการโอนและยืนยันการชำระเงิน</span>
                 </div>
-                <p className="text-xs text-slate-500 mt-2">
-                  โปรดอย่าโอนเงินผ่านภาพ QR ตัวอย่างนี้
-                </p>
+                <ol className="text-xs text-slate-600 space-y-2 list-decimal list-inside leading-relaxed">
+                  <li>
+                    เปิดแอปพลิเคชันธนาคาร (Mobile Banking) ของท่าน
+                  </li>
+                  <li>
+                    โอนเงินเข้าบัญชี <strong className="text-slate-900">ธ.ไทยพาณิชย์ 551-426185-1</strong> (นายชยณัฐ / น.ส.สุมาลี)
+                  </li>
+                  <li>
+                    ยอดเงินที่ต้องชำระ: <strong className="text-amber-800 font-bold">{(guestCount * TICKET_PRICE).toLocaleString('th-TH')} บาท</strong> ({guestCount} ท่าน)
+                  </li>
+                  <li>
+                    บันทึกภาพสลิป หรือดาวน์โหลดเป็น PDF แล้วนำมาแนบที่ช่องทางด้านขวา
+                  </li>
+                </ol>
+                <div className="pt-2 border-t border-amber-200/60 text-[11px] text-slate-500 flex items-center gap-1.5">
+                  <PhoneCall className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                  <span>สอบถามเพิ่มเติมเรื่องการโอนเงิน โทร: 0951864940</span>
+                </div>
               </div>
             </div>
 
