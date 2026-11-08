@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { supabase } from '../supabase';
+import { request } from '../bookingApi';
 
 interface AdminLoginProps {
   onSuccess: () => void;
@@ -33,15 +34,13 @@ export function AdminLogin({ onSuccess }: AdminLoginProps) {
 
       if (!token) throw new Error('ไม่พบข้อมูลการเข้าสู่ระบบ');
 
-      const { data, error: adminError } =
-        await supabase.functions.invoke('admin-api', {
-          body: { action: 'verify-admin' },
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
+      const data = await request<{ isAdmin: boolean }>(
+        'admin-api',
+        { action: 'verify-admin' },
+        token
+      );
 
-      if (adminError || !data?.isAdmin) {
+      if (!data?.isAdmin) {
         await supabase.auth.signOut();
         throw new Error('บัญชีนี้ไม่มีสิทธิ์เจ้าหน้าที่');
       }

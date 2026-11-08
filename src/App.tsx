@@ -22,7 +22,7 @@ import {
   updateReservationStatusInStorage
 } from './data/initialData';
 import { Award, Heart, HelpCircle, PhoneCall, ShieldCheck } from 'lucide-react';
-import { fetchPublicSeats, createReservation, fetchAdminReservations, deleteReservationFromServer } from './bookingApi';
+import { fetchPublicSeats, createReservation, fetchAdminReservations, deleteReservationFromServer, request } from './bookingApi';
 import { supabase } from './supabase';
 import { KKUNursingLogo } from './components/KKUNursingLogo';
 
@@ -74,15 +74,14 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
-        supabase.functions.invoke('admin-api', {
-          body: { action: 'verify-admin' },
-          headers: { Authorization: `Bearer ${data.session.access_token}` }
-        }).then(({ data: verifyData, error }) => {
-          if (!error && verifyData?.isAdmin) {
-            setIsAdmin(true);
-            void loadAdminReservations();
-          }
-        }).catch(() => {});
+        request<{ isAdmin: boolean }>('admin-api', { action: 'verify-admin' }, data.session.access_token)
+          .then((verifyData) => {
+            if (verifyData?.isAdmin) {
+              setIsAdmin(true);
+              void loadAdminReservations();
+            }
+          })
+          .catch(() => {});
       }
     });
   }, []);
@@ -107,18 +106,19 @@ export default function App() {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
 
-      const { data, error } = await supabase.functions.invoke('admin-api', {
-        body: {
+      const data = await request<{ success: boolean; seat: { checked_in: boolean } }>(
+        'admin-api',
+        {
           action: 'set-checkin',
           table,
           seat,
           checkedIn: !currentSeat.checkedIn,
         },
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined
-      });
+        token
+      );
 
-      if (error || !data?.success) {
-        throw new Error(data?.error || 'ไม่สามารถบันทึกการเช็กอินได้');
+      if (!data?.success) {
+        throw new Error('ไม่สามารถบันทึกการเช็กอินได้');
       }
 
       setExistingSeats((prev) =>
@@ -135,9 +135,22 @@ export default function App() {
     }
   };
 
-  const handleUpdateReservationStatus = (id: string, status: 'verified' | 'pending' | 'rejected') => {
-    setReservations(prev => prev.map(r => r.id === id ? { ...r, status } : r));
+  const handleUpdateReservationStatus = async (id: string, status: 'verified' | 'pending' | 'rejected', reason?: string) => {
+    setReservations(prev => prev.map(r => r.id === id ? { ...r, status, rejectionReason: reason } : r));
     updateReservationStatusInStorage(id, status);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      await request('admin-api', {
+        action: 'update-status',
+        reservationId: id,
+        status,
+        rejectionReason: reason || null
+      }, token);
+    } catch (err: any) {
+      console.warn('Database status update notice:', err.message);
+    }
   };
 
   const handleDeleteReservation = async (reservationId: string) => {

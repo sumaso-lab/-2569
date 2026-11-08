@@ -69,12 +69,11 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
   const [email, setEmail] = useState('');
   const [category, setCategory] = useState<AttendeeCategory>('graduate');
   const [academicYear, setAcademicYear] = useState('รุ่น 2569');
-  const [guestCount, setGuestCount] = useState<number>(2);
+  const [guestCount, setGuestCount] = useState<number>(1);
 
   // Individual guests state
   const [guests, setGuests] = useState<GuestInfo[]>([
-    { id: '1', name: '', category: 'graduate' },
-    { id: '2', name: '', category: 'guest' }
+    { id: '1', name: '', category: 'graduate' }
   ]);
 
   // Step 2: Payment
@@ -115,7 +114,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
         } else {
           updated.push({
             id: String(i + 1),
-            name: i === 0 ? bookerName : `ผู้ร่วมงาน ${i + 1}`,
+            name: i === 0 ? (bookerName || '') : `ผู้ร่วมงาน ${i + 1}`,
             category: i === 0 ? category : 'guest'
           });
         }
@@ -245,30 +244,68 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
 
   // Confirm reservation and generate tickets
   const handleConfirmReservation = async () => {
-    if (saving || !seatsReady) return;
-    if (!bookerName.trim() || guests.some(g => !g.name.trim())) { alert('กรุณากรอกชื่อผู้จองและผู้ร่วมงานให้ครบ'); return; }
+    if (saving) return;
+    if (!seatsReady) {
+      alert('ระบบกำลังโหลดข้อมูลผังที่นั่งล่าสุดจากเซิร์ฟเวอร์ กรุณารอสักครู่แล้วกดยืนยันอีกครั้ง');
+      return;
+    }
+    const trimmedBooker = bookerName.trim();
+    if (!trimmedBooker) {
+      alert('กรุณากรอกชื่อผู้จองหลัก');
+      return;
+    }
+
+    // Ensure all guests have a non-empty name
+    const sanitizedGuests = guests.map((g, idx) => ({
+      ...g,
+      name: g.name.trim() || (idx === 0 ? trimmedBooker : `ผู้ร่วมงาน ${idx + 1}`)
+    }));
+
     // Check all guests have seats
-    const allAssigned = guests.every((_, idx) => !!assignments[idx]);
+    const allAssigned = sanitizedGuests.every((_, idx) => !!assignments[idx]);
     if (!allAssigned) {
-      alert('กรุณาเลือกเก้าอี้และโต๊ะให้ครบทุกคนในกลุ่ม');
+      alert(`กรุณาเลือกเก้าอี้และโต๊ะให้ครบทั้ง ${sanitizedGuests.length} ท่าน`);
+      return;
+    }
+
+    // Verify none of the chosen seats are already taken on the server
+    const conflict = Object.values(assignments).find(a =>
+      existingSeats.some(s => s.table === a.table && s.seat === a.seat)
+    );
+    if (conflict) {
+      alert(`ขออภัย: โต๊ะ ${conflict.table} ที่นั่งที่ ${conflict.seat} มีผู้จองแล้ว กรุณากดเลือกที่นั่งว่างตำแหน่งอื่น`);
       return;
     }
 
     const reservationId = 'RES-' + crypto.randomUUID();
     const timestamp = new Date().toLocaleString('th-TH');
 
-    const updatedGuests = guests.map((g, idx) => {
-      const code = `GRAD69-${tableNumberPad(assignments[idx].table)}${seatNumberPad(assignments[idx].seat)}${Math.floor(10 + Math.random() * 90)}`;
+    const updatedGuests = sanitizedGuests.map((g, idx) => {
+      const tableId = assignments[idx]?.table ?? 1;
+      const seatId = assignments[idx]?.seat ?? 1;
+      const code = `GRAD69-${tableNumberPad(tableId)}${seatNumberPad(seatId)}${Math.floor(10 + Math.random() * 90)}`;
       return {
         ...g,
         ticketCode: code
       };
     });
 
+    // Create normalized assignments with clean sequential string keys '0', '1', ...
+    const normalizedAssignments: Record<string, { table: number; seat: number }> = {};
+    for (let i = 0; i < sanitizedGuests.length; i++) {
+      if (assignments[i]) {
+        normalizedAssignments[String(i)] = {
+          table: assignments[i].table,
+          seat: assignments[i].seat
+        };
+      }
+    }
+
     setSaving(true);
     try {
       let finalSlipUrl = '';
       let finalSlipFileName = slipFile?.name || 'slip.jpg';
+      const fileExt = slipFile?.name?.split('.').pop() || 'jpg';
 
       if (slipPreview) {
         cacheDocument(reservationId, slipPreview, finalSlipFileName, slipFile?.type);
@@ -280,31 +317,26 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       } else {
         // Real upload to Supabase Storage Private 'payment-slips' bucket
         if (slipFile) {
-          try {
-            const uploadRes = await uploadPaymentDocument(slipFile, reservationId);
-            finalSlipUrl = uploadRes.path;
-            finalSlipFileName = uploadRes.fileName;
-          } catch (uploadErr: any) {
-            console.warn('Supabase storage bucket notice, saving document directly into record:', uploadErr);
-            // Seamlessly fallback to slipPreview (Data URL) so the user's real file is preserved in DB
-            finalSlipUrl = slipPreview || '';
-          }
+          const uploadRes = await uploadPaymentDocument(slipFile, reservationId);
+          finalSlipUrl = uploadRes.path;
+          finalSlipFileName = uploadRes.fileName;
         } else if (slipPreview) {
-          finalSlipUrl = slipPreview;
+          // Keep lightweight path string in DB rather than multi-MB base64
+          finalSlipUrl = `${reservationId}/slip_${Date.now()}.${fileExt}`;
         }
       }
 
       const record: ReservationRecord = {
         id: reservationId,
-        mainBooker: bookerName,
-        phone,
-        email,
+        mainBooker: trimmedBooker,
+        phone: phone.trim(),
+        email: email.trim(),
         category,
         academicYear,
-        guestCount,
+        guestCount: sanitizedGuests.length,
         guests: updatedGuests,
-        assignments,
-        totalAmount: guestCount * TICKET_PRICE,
+        assignments: normalizedAssignments as any,
+        totalAmount: sanitizedGuests.length * TICKET_PRICE,
         slipFileName: finalSlipFileName,
         slipUrl: finalSlipUrl,
         slipTimestamp: timestamp,
@@ -318,6 +350,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
       setConfirmedReservation(record);
       setCurrentStep(4);
     } catch (error) {
+      console.error('Reservation error:', error);
       alert(error instanceof Error ? error.message : 'บันทึกการจองไม่สำเร็จ กรุณาลองใหม่');
     } finally {
       setSaving(false);
@@ -589,13 +622,20 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (!bookerName.trim()) {
+                  const trimmed = bookerName.trim();
+                  if (!trimmed) {
                     alert('กรุณากรอกชื่อ–นามสกุลผู้จอง');
                     return;
                   }
                   if (!phone.trim()) {
                     alert('กรุณากรอกเบอร์โทรศัพท์ติดต่อ');
                     return;
+                  }
+                  for (let i = 0; i < guests.length; i++) {
+                    if (!guests[i].name.trim()) {
+                      alert(`กรุณาระบุชื่อ–นามสกุลสำหรับผู้เข้าร่วมท่านที่ ${i + 1}`);
+                      return;
+                    }
                   }
                   setCurrentStep(2);
                 }}
@@ -1044,7 +1084,7 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               <button
                 type="button"
                 onClick={() => setCurrentStep(2)}
-                className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
+                className="px-5 py-3 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 cursor-pointer"
               >
                 ย้อนกลับ
               </button>
@@ -1052,11 +1092,23 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmReservation}
-                disabled={saving || !seatsReady || Object.keys(assignments).length !== guestCount}
-                className="px-8 py-3.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-xl shadow-lg shadow-amber-600/30 transition-all flex items-center gap-2 cursor-pointer"
+                disabled={saving}
+                className={`px-8 py-3.5 font-bold rounded-xl shadow-lg transition-all flex items-center gap-2 cursor-pointer ${
+                  saving || !seatsReady || Object.keys(assignments).length !== guestCount
+                    ? 'bg-slate-200 text-slate-600 border border-slate-300'
+                    : 'bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white shadow-amber-600/30'
+                }`}
               >
                 <Sparkles className="w-4 h-4" />
-                <span>{saving ? 'กำลังตรวจสอบและบันทึก...' : 'ยืนยันการจองและส่งหลักฐาน (รอตรวจสลิป)'}</span>
+                <span>
+                  {saving
+                    ? 'กำลังตรวจสอบและบันทึก...'
+                    : !seatsReady
+                    ? 'กำลังโหลดข้อมูลที่นั่ง...'
+                    : Object.keys(assignments).length !== guestCount
+                    ? `กรุณาเลือกที่นั่งให้ครบ (${Object.keys(assignments).length}/${guestCount})`
+                    : 'ยืนยันการจองและส่งหลักฐาน (รอตรวจสลิป)'}
+                </span>
               </button>
             </div>
           </div>

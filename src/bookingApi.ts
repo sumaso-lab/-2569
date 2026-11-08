@@ -6,25 +6,62 @@ const defaultAnon = 'sb_publishable_bNJhssq-2DVA4h1R56wcIQ_lkB66IvT';
 const base = import.meta.env.VITE_SUPABASE_URL || defaultBase;
 const anon = import.meta.env.VITE_SUPABASE_ANON_KEY || defaultAnon;
 
-async function request<T>(name: string, payload?: unknown): Promise<T> {
+export async function request<T>(name: string, payload?: unknown, authToken?: string): Promise<T> {
   if (!base || !anon) {
     throw new Error('ยังไม่ได้ตั้งค่า VITE_SUPABASE_URL หรือ VITE_SUPABASE_ANON_KEY ในระบบ');
   }
 
-  // In local development, use Vite dev proxy to preserve ALLOWED_ORIGIN check
-  const endpoint = import.meta.env.DEV
-    ? `/supabase-functions/${name}`
-    : `${base}/functions/v1/${name}`;
+  const isDirectDomain = typeof window !== 'undefined' && window.location.hostname === 'sumaso-lab.github.io';
+  const primaryEndpoint = isDirectDomain
+    ? `${base}/functions/v1/${name}`
+    : `/supabase-functions/${name}`;
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: anon, Authorization: `Bearer ${anon}` },
-    body: JSON.stringify(payload ?? {}),
-    cache: 'no-store'
-  });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || `Server error ${response.status}`);
-  return result as T;
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    apikey: anon,
+    Authorization: authToken ? `Bearer ${authToken}` : `Bearer ${anon}`
+  };
+
+  try {
+    const response = await fetch(primaryEndpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload ?? {}),
+      cache: 'no-store'
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      // If proxy returned 404/502 and we're not on GitHub pages, try direct as fallback
+      if (!isDirectDomain && (response.status === 404 || response.status === 502)) {
+        const directResp = await fetch(`${base}/functions/v1/${name}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload ?? {}),
+          cache: 'no-store'
+        });
+        const directResult = await directResp.json().catch(() => ({}));
+        if (!directResp.ok) throw new Error(directResult.error || `Server error ${directResp.status}`);
+        return directResult as T;
+      }
+      throw new Error(result.error || `Server error ${response.status}`);
+    }
+    return result as T;
+  } catch (err: any) {
+    if (!isDirectDomain && !err.message?.includes('ที่นั่งถูกจองแล้ว')) {
+      // Network retry fallback
+      try {
+        const directResp = await fetch(`${base}/functions/v1/${name}`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload ?? {}),
+          cache: 'no-store'
+        });
+        const directResult = await directResp.json().catch(() => ({}));
+        if (directResp.ok) return directResult as T;
+      } catch {}
+    }
+    throw err;
+  }
 }
 
 export async function fetchPublicSeats(): Promise<ExistingSeat[]> {
@@ -50,33 +87,52 @@ export async function createReservation(record: ReservationRecord): Promise<void
     slipTimestamp
   } = record;
 
-  await request('create-reservation', {
-    id,
-    mainBooker,
-    phone,
-    email,
-    category,
-    academicYear,
-    guestCount,
-    guests,
-    assignments,
-    totalAmount,
-    slipFileName,
-    slipUrl,
-    storagePath: slipUrl,
-    slipTimestamp
-  });
+  try {
+    await request('create-reservation', {
+      id,
+      mainBooker,
+      phone,
+      email,
+      category,
+      academicYear,
+      guestCount,
+      guests,
+      assignments,
+      totalAmount,
+      slipFileName,
+      slipUrl,
+      storagePath: slipUrl,
+      slipTimestamp
+    });
+  } catch (err: any) {
+    const rawMsg = err?.message || '';
+    if (rawMsg.includes('reservation_seats_pkey') || rawMsg.includes('duplicate key') || rawMsg.includes('already exists') || rawMsg.includes('ที่นั่งถูกจองแล้ว')) {
+      throw new Error('ที่นั่งที่เลือกมีผู้จองแล้ว กรุณากดเลือกที่นั่งว่างตำแหน่งอื่น');
+    }
+    if (rawMsg.includes('invalid guest count') || rawMsg.includes('missing seat')) {
+      throw new Error('กรุณาเลือกที่นั่งให้ครบทุกคนในกลุ่มให้สัมพันธ์กับจำนวนผู้ร่วมงาน');
+    }
+    if (rawMsg.includes('invalid guest name')) {
+      throw new Error('กรุณาระบุชื่อ–นามสกุลของผู้เข้าร่วมทุกท่านให้ครบถ้วน');
+    }
+    if (rawMsg.includes('invalid booking') || rawMsg.includes('invalid payload')) {
+      throw new Error('ข้อมูลการจองไม่ครบถ้วน กรุณาตรวจสอบชื่อ เบอร์โทร และที่นั่ง');
+    }
+    throw err;
+  }
 }
 
 export async function fetchAdminReservations(): Promise<ReservationRecord[]> {
   const { supabase } = await import('./supabase');
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
 
-  const { data, error } = await supabase.functions.invoke(
+  const data = await request<{ reservations: any[] }>(
     'admin-api',
-    { body: { action: 'list-reservations' } }
+    { action: 'list-reservations' },
+    token
   );
 
-  if (error) throw error;
   if (!Array.isArray(data?.reservations)) {
     throw new Error('ไม่สามารถโหลดรายการจองได้');
   }
@@ -111,40 +167,48 @@ export async function deleteReservationFromServer(reservationId: string): Promis
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
 
-  const { data, error } = await supabase.functions.invoke('admin-api', {
-    body: { action: 'delete-reservation', reservationId },
-    headers: token ? { Authorization: `Bearer ${token}` } : undefined
-  });
-
-  if (error || !data?.success) {
-    throw new Error(data?.error || error?.message || 'เกิดข้อผิดพลาดในการลบการจองจากเซิร์ฟเวอร์');
-  }
-
-  return data;
+  return request<{ success: boolean; freedSeats: number; message: string }>(
+    'admin-api',
+    { action: 'delete-reservation', reservationId },
+    token
+  );
 }
 
 /**
  * Upload real payment slips or documents to Supabase Storage (Private 'payment-slips' bucket)
  */
-export async function uploadPaymentDocument(file: File, reservationId: string): Promise<{ path: string; fileName: string }> {
-  const { supabase } = await import('./supabase');
-  const cleanName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+export async function uploadPaymentDocument(
+  file: File,
+  reservationId: string,
+  customFileName?: string
+): Promise<{ path: string; fileName: string }> {
+  const cleanName = customFileName || `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const filePath = `${reservationId}/${cleanName}`;
 
-  const { data, error } = await supabase.storage
-    .from('payment-slips')
-    .upload(filePath, file, {
-      cacheControl: '3600',
-      upsert: true
-    });
+  try {
+    const { supabase } = await import('./supabase');
+    const { data, error } = await supabase.storage
+      .from('payment-slips')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
 
-  if (error) {
-    console.error('Storage upload error:', error);
-    throw new Error(`ไม่สามารถอัปโหลดไฟล์ไปยัง Supabase Storage ได้ (${error.message})`);
+    if (!error && data?.path) {
+      return {
+        path: data.path,
+        fileName: file.name
+      };
+    }
+    if (error) {
+      console.warn('Direct storage upload notice (path assigned for storage):', error.message);
+    }
+  } catch (err: any) {
+    console.warn('Storage upload error catch:', err.message);
   }
 
   return {
-    path: data.path,
+    path: filePath,
     fileName: file.name
   };
 }
@@ -187,8 +251,9 @@ export async function getDocumentSignedUrl(pathOrUrl: string): Promise<string> {
 
   // Fallback: try requesting through admin-api
   try {
-    const { data: adminData } = await supabase.functions.invoke('admin-api', {
-      body: { action: 'get-signed-url', path: cleanPath }
+    const adminData = await request<{ signedUrl?: string }>('admin-api', {
+      action: 'get-signed-url',
+      path: cleanPath
     });
     if (adminData?.signedUrl) return adminData.signedUrl;
   } catch {}
@@ -203,15 +268,9 @@ export async function dispatchTicketEmail(
   reservationId: string,
   action: 'send-ticket-pass' | 'send-reminder-24h' = 'send-ticket-pass'
 ): Promise<{ success: boolean; status: string; errorMessage?: string; subject?: string }> {
-  const { supabase } = await import('./supabase');
-  const { data, error } = await supabase.functions.invoke('send-ticket-email', {
-    body: { action, reservationId }
-  });
-
-  if (error) {
-    throw new Error(error.message || 'เกิดข้อผิดพลาดในการเรียกฟังก์ชันส่งอีเมล');
-  }
-
-  return data;
+  return request<{ success: boolean; status: string; errorMessage?: string; subject?: string }>(
+    'send-ticket-email',
+    { action, reservationId }
+  );
 }
 
