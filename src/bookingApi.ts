@@ -175,6 +175,57 @@ export async function deleteReservationFromServer(reservationId: string): Promis
 }
 
 /**
+ * Server-side full update of a reservation (booker, contact, guests, assignments, status, notes)
+ */
+export async function updateReservationOnServer(record: ReservationRecord): Promise<{ success: boolean }> {
+  const { supabase } = await import('./supabase');
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+
+  return request<{ success: boolean }>(
+    'admin-api',
+    { action: 'update-reservation', reservation: record },
+    token
+  );
+}
+
+/**
+ * Server-side reassign or swap seats
+ */
+export async function reassignSeatOnServer(
+  oldTable: number,
+  oldSeat: number,
+  newTable: number,
+  newSeat: number,
+  reservationId?: string
+): Promise<{ success: boolean }> {
+  const { supabase } = await import('./supabase');
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+
+  return request<{ success: boolean }>(
+    'admin-api',
+    { action: 'reassign-seat', oldTable, oldSeat, newTable, newSeat, reservationId },
+    token
+  );
+}
+
+/**
+ * Server-side delete seat
+ */
+export async function deleteSeatOnServer(table: number, seat: number): Promise<{ success: boolean }> {
+  const { supabase } = await import('./supabase');
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+
+  return request<{ success: boolean }>(
+    'admin-api',
+    { action: 'delete-seat', table, seat },
+    token
+  );
+}
+
+/**
  * Upload real payment slips or documents to Supabase Storage (Private 'payment-slips' bucket)
  */
 export async function uploadPaymentDocument(

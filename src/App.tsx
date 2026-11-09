@@ -21,8 +21,16 @@ import {
   saveExtraSeatToStorage,
   updateReservationStatusInStorage
 } from './data/initialData';
-import { Award, Heart, HelpCircle, PhoneCall, ShieldCheck } from 'lucide-react';
-import { fetchPublicSeats, createReservation, fetchAdminReservations, deleteReservationFromServer, request } from './bookingApi';
+import {
+  fetchPublicSeats,
+  createReservation,
+  fetchAdminReservations,
+  deleteReservationFromServer,
+  updateReservationOnServer,
+  reassignSeatOnServer,
+  deleteSeatOnServer,
+  request
+} from './bookingApi';
 import { supabase } from './supabase';
 import { KKUNursingLogo } from './components/KKUNursingLogo';
 
