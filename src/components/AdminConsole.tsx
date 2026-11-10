@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Users,
   CheckCircle2,
@@ -139,6 +139,12 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   const [newPasscode, setNewPasscode] = useState('');
   const [passcodeSuccessMsg, setPasscodeSuccessMsg] = useState('');
 
+  useEffect(() => {
+    if (isAuthenticated && !sessionStorage.getItem('grad69_admin_passcode')) {
+      sessionStorage.setItem('grad69_admin_passcode', DEFAULT_ADMIN_PASSCODE);
+    }
+  }, [isAuthenticated]);
+
   // Active Admin Tab: slips | docs | roster | floorplan | addGuest | emails | settings
   const [activeTab, setActiveTab] = useState<'slips' | 'docs' | 'roster' | 'floorplan' | 'addGuest' | 'emails' | 'settings'>('slips');
   const [emailLogs, setEmailLogs] = useState<EmailDispatchRecord[]>(() => getEmailDispatchLogs());
@@ -252,9 +258,11 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   const handleLogin = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const correctCode = getAdminPasscode();
-    if (passcodeInput.trim() === correctCode || passcodeInput.trim() === DEFAULT_ADMIN_PASSCODE) {
+    const entered = passcodeInput.trim();
+    if (entered === correctCode || entered === DEFAULT_ADMIN_PASSCODE) {
       setIsAuthenticated(true);
       sessionStorage.setItem('grad69_admin_authenticated', 'true');
+      sessionStorage.setItem('grad69_admin_passcode', entered || DEFAULT_ADMIN_PASSCODE);
       setPasscodeError('');
     } else {
       setPasscodeError('รหัสผ่านไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง');
@@ -264,6 +272,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   const handleLogout = () => {
     setIsAuthenticated(false);
     sessionStorage.removeItem('grad69_admin_authenticated');
+    sessionStorage.removeItem('grad69_admin_passcode');
     setPasscodeInput('');
   };
 

@@ -89,7 +89,8 @@ begin
     )
   );
 
-  -- 3. Delete from reservations (cascades automatically to reservation_seats)
+  -- 3. Delete seats first to ensure instant vacancy, then delete reservation
+  delete from public.reservation_seats where reservation_id = p_reservation_id;
   delete from public.reservations where id = p_reservation_id;
   get diagnostics v_deleted_count = row_count;
 
