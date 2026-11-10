@@ -211,6 +211,26 @@ export async function reassignSeatOnServer(
 }
 
 /**
+ * Server-side swap seats between two positions
+ */
+export async function swapSeatsOnServer(
+  tableA: number,
+  seatA: number,
+  tableB: number,
+  seatB: number
+): Promise<{ success: boolean }> {
+  const { supabase } = await import('./supabase');
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+
+  return request<{ success: boolean }>(
+    'admin-api',
+    { action: 'swap-seats', tableA, seatA, tableB, seatB },
+    token
+  );
+}
+
+/**
  * Server-side delete seat
  */
 export async function deleteSeatOnServer(table: number, seat: number): Promise<{ success: boolean }> {

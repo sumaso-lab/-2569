@@ -58,7 +58,10 @@ Deno.serve(async (req) => {
       const adminId = adminUser?.id || 'admin-console';
       const adminEmail = adminUser?.email || 'admin@kku.ac.th';
 
-      // 1. Try RPC first
+      // 1. Immediately delete seats from reservation_seats for guaranteed table vacancy
+      await db.from('reservation_seats').delete().eq('reservation_id', reservationId);
+
+      // 2. Try RPC first (with audit log)
       try {
         const { data, error } = await db.rpc('delete_reservation_atomic', {
           p_reservation_id: reservationId,
@@ -72,8 +75,7 @@ Deno.serve(async (req) => {
         console.warn('RPC delete error, falling back to direct delete:', rpcErr);
       }
 
-      // 2. Direct server deletion fallback (service_role has full admin access)
-      await db.from('reservation_seats').delete().eq('reservation_id', reservationId);
+      // 3. Direct server deletion fallback (service_role has full admin access)
       const { error: delError } = await db.from('reservations').delete().eq('id', reservationId);
       if (delError) throw delError;
 
@@ -111,7 +113,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: true, signedUrl: data.signedUrl }), { status: 200, headers });
     }
 
-    // Action 5: Update Status (verified / rejected)
+    // Action 5: Update Status (verified / rejected / pending)
     if (action === 'update-status') {
       const { reservationId, status, rejectionReason } = body;
       const { error } = await db
@@ -123,6 +125,26 @@ Deno.serve(async (req) => {
         .eq('id', reservationId);
 
       if (error) throw error;
+
+      // When rejected, immediately release its seats from reservation_seats so that the table and seats become VACANT!
+      if (status === 'rejected') {
+        await db.from('reservation_seats').delete().eq('reservation_id', reservationId);
+      } else if (status === 'verified' || status === 'pending') {
+        // Re-instate seats if un-rejected and assignments exist
+        const { data: res } = await db.from('reservations').select('assignments').eq('id', reservationId).maybeSingle();
+        if (res?.assignments && typeof res.assignments === 'object') {
+          for (const pos of Object.values(res.assignments) as any[]) {
+            if (pos?.table && pos?.seat) {
+              await db.from('reservation_seats').upsert({
+                table_number: pos.table,
+                seat_number: pos.seat,
+                reservation_id: reservationId
+              });
+            }
+          }
+        }
+      }
+
       return new Response(JSON.stringify({ success: true }), { status: 200, headers });
     }
 
@@ -154,11 +176,11 @@ Deno.serve(async (req) => {
 
       if (updateError) throw updateError;
 
-      // Synchronize reservation_seats
-      if (reservation.assignments && typeof reservation.assignments === 'object') {
-        // Clear previous seats
-        await db.from('reservation_seats').delete().eq('reservation_id', reservation.id);
+      // Always clear old seats for this reservation so previous seats become vacant
+      await db.from('reservation_seats').delete().eq('reservation_id', reservation.id);
 
+      // If status is NOT rejected, insert the newly assigned seats
+      if (reservation.status !== 'rejected' && reservation.assignments && typeof reservation.assignments === 'object') {
         const seatInserts: any[] = [];
         for (const pos of Object.values(reservation.assignments) as any[]) {
           if (pos?.table && pos?.seat) {
@@ -170,7 +192,7 @@ Deno.serve(async (req) => {
           }
         }
         if (seatInserts.length > 0) {
-          await db.from('reservation_seats').insert(seatInserts);
+          await db.from('reservation_seats').upsert(seatInserts);
         }
       }
 
@@ -180,15 +202,74 @@ Deno.serve(async (req) => {
     // Action 7: Seat modifications (Swap, Reassign, Delete)
     if (action === 'reassign-seat') {
       const { oldTable, oldSeat, newTable, newSeat, reservationId } = body;
+      let targetResId = reservationId;
+
+      if (!targetResId && oldTable && oldSeat) {
+        const { data: oldRow } = await db.from('reservation_seats')
+          .select('reservation_id')
+          .match({ table_number: oldTable, seat_number: oldSeat })
+          .maybeSingle();
+        if (oldRow?.reservation_id) {
+          targetResId = oldRow.reservation_id;
+        }
+      }
+
+      // 1. Delete old seat -> previous seat becomes VACANT immediately!
       if (oldTable && oldSeat) {
         await db.from('reservation_seats').delete().match({ table_number: oldTable, seat_number: oldSeat });
       }
-      if (newTable && newSeat && reservationId) {
+
+      // 2. Insert new seat for this reservation
+      if (newTable && newSeat && targetResId) {
         await db.from('reservation_seats').upsert({
           table_number: newTable,
           seat_number: newSeat,
-          reservation_id: reservationId
+          reservation_id: targetResId
         });
+
+        // 3. Keep reservations table assignments & guests in sync
+        const { data: res } = await db.from('reservations').select('assignments, guests').eq('id', targetResId).maybeSingle();
+        if (res) {
+          const assignments = { ...(res.assignments || {}) };
+          let changed = false;
+          for (const [k, v] of Object.entries(assignments) as [string, any][]) {
+            if (v?.table === oldTable && v?.seat === oldSeat) {
+              assignments[k] = { table: newTable, seat: newSeat };
+              changed = true;
+            }
+          }
+          let guests = res.guests;
+          if (Array.isArray(guests)) {
+            guests = guests.map((g: any) => {
+              if (g?.table === oldTable && g?.seat === oldSeat) {
+                changed = true;
+                return { ...g, table: newTable, seat: newSeat };
+              }
+              return g;
+            });
+          }
+          if (changed) {
+            await db.from('reservations').update({ assignments, guests }).eq('id', targetResId);
+          }
+        }
+      }
+      return new Response(JSON.stringify({ success: true }), { status: 200, headers });
+    }
+
+    if (action === 'swap-seats') {
+      const { tableA, seatA, tableB, seatB } = body;
+      const { data: rowA } = await db.from('reservation_seats').select('*').match({ table_number: tableA, seat_number: seatA }).maybeSingle();
+      const { data: rowB } = await db.from('reservation_seats').select('*').match({ table_number: tableB, seat_number: seatB }).maybeSingle();
+
+      if (rowA && rowB) {
+        await db.from('reservation_seats').update({ reservation_id: rowB.reservation_id }).match({ table_number: tableA, seat_number: seatA });
+        await db.from('reservation_seats').update({ reservation_id: rowA.reservation_id }).match({ table_number: tableB, seat_number: seatB });
+      } else if (rowA && !rowB) {
+        await db.from('reservation_seats').delete().match({ table_number: tableA, seat_number: seatA });
+        await db.from('reservation_seats').insert({ table_number: tableB, seat_number: seatB, reservation_id: rowA.reservation_id });
+      } else if (!rowA && rowB) {
+        await db.from('reservation_seats').delete().match({ table_number: tableB, seat_number: seatB });
+        await db.from('reservation_seats').insert({ table_number: tableA, seat_number: seatA, reservation_id: rowB.reservation_id });
       }
       return new Response(JSON.stringify({ success: true }), { status: 200, headers });
     }

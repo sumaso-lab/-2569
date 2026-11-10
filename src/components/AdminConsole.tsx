@@ -2950,21 +2950,39 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                 ))}
               </div>
 
-              <div className="pt-4 border-t border-slate-100 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setEditingReservation(null)}
-                  className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors"
-                >
-                  ยกเลิก
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5"
-                >
-                  <Check className="w-4 h-4" />
-                  <span>บันทึกการแก้ไขทั้งหมด</span>
-                </button>
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                {onDeleteReservation && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const resToDelete = editingReservation;
+                      setEditingReservation(null);
+                      setDeletingReservation(resToDelete);
+                      setDeleteConfirmText('ยืนยันลบ');
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                    title="ลบผู้ลงทะเบียนและคืนที่นั่งทั้งหมด"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-600" />
+                    <span>ลบผู้ลงทะเบียนนี้</span>
+                  </button>
+                )}
+                <div className="flex items-center gap-3 ml-auto">
+                  <button
+                    type="button"
+                    onClick={() => setEditingReservation(null)}
+                    className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    ยกเลิก
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs shadow-md transition-all flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>บันทึกการแก้ไขทั้งหมด</span>
+                  </button>
+                </div>
               </div>
             </form>
           </div>
@@ -4009,14 +4027,23 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-slate-700">
-                พิมพ์คำว่า <span className="text-rose-600 font-bold font-mono">ยืนยันลบ</span> เพื่อยืนยันการลบ:
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-slate-700">
+                  พิมพ์คำว่า <span className="text-rose-600 font-bold font-mono">ยืนยันลบ</span> เพื่อยืนยันการลบ:
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setDeleteConfirmText('ยืนยันลบ')}
+                  className="text-[11px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+                >
+                  คลิกเติมคำยืนยันอัตโนมัติ
+                </button>
+              </div>
               <input
                 type="text"
                 value={deleteConfirmText}
                 onChange={e => setDeleteConfirmText(e.target.value)}
-                placeholder="พิมพ์ 'ยืนยันลบ'"
+                placeholder="พิมพ์ 'ยืนยันลบ' หรือ 'ลบ'"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:ring-2 focus:ring-rose-500 outline-none"
               />
             </div>
@@ -4031,7 +4058,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
               </button>
               <button
                 type="button"
-                disabled={deleteConfirmText.trim() !== 'ยืนยันลบ' || isDeleting}
+                disabled={!['ยืนยันลบ', 'ลบ', 'ยืนยัน', 'delete'].includes(deleteConfirmText.trim().toLowerCase()) || isDeleting}
                 onClick={handleExecuteDelete}
                 className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
               >

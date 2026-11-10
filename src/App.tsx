@@ -29,6 +29,7 @@ import {
   deleteReservationFromServer,
   updateReservationOnServer,
   reassignSeatOnServer,
+  swapSeatsOnServer,
   deleteSeatOnServer,
   request
 } from './bookingApi';
@@ -145,9 +146,32 @@ export default function App() {
   };
 
   const handleUpdateReservationStatus = async (id: string, status: 'verified' | 'pending' | 'rejected', reason?: string) => {
+    // 1. Update reservation in state
     setReservations(prev => prev.map(r => r.id === id ? { ...r, status, rejectionReason: reason } : r));
     updateReservationStatusInStorage(id, status);
 
+    // 2. If status is 'rejected', immediately free all associated seats so table/seats become VACANT!
+    if (status === 'rejected') {
+      const targetRes = reservations.find(r => r.id === id);
+      if (targetRes) {
+        const seatsToFree = new Set<string>();
+        if (targetRes.assignments) {
+          Object.values(targetRes.assignments).forEach((a: any) => {
+            if (a?.table && a?.seat) seatsToFree.add(`${a.table}-${a.seat}`);
+          });
+        }
+        if (targetRes.guests) {
+          targetRes.guests.forEach(g => {
+            if (g.table && g.seat) seatsToFree.add(`${g.table}-${g.seat}`);
+          });
+        }
+        if (seatsToFree.size > 0) {
+          setExistingSeats(prev => prev.filter(s => !seatsToFree.has(`${s.table}-${s.seat}`)));
+        }
+      }
+    }
+
+    // 3. Persist to Supabase
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
@@ -157,17 +181,62 @@ export default function App() {
         status,
         rejectionReason: reason || null
       }, token);
+      await refreshSeats();
     } catch (err: any) {
       console.warn('Database status update notice:', err.message);
     }
   };
 
   const handleUpdateReservation = async (record: ReservationRecord) => {
-    // 1. Update state immediately
+    // 1. Find previous seats for this reservation
+    const oldRes = reservations.find(r => r.id === record.id);
+    const oldSeats = new Set<string>();
+    if (oldRes?.assignments) {
+      Object.values(oldRes.assignments).forEach((a: any) => {
+        if (a?.table && a?.seat) oldSeats.add(`${a.table}-${a.seat}`);
+      });
+    }
+    if (oldRes?.guests) {
+      oldRes.guests.forEach(g => {
+        if (g.table && g.seat) oldSeats.add(`${g.table}-${g.seat}`);
+      });
+    }
+
+    // 2. Update state immediately (ชื่อและข้อมูลอัปเดตทันที)
     setReservations(prev => prev.map(r => r.id === record.id ? record : r));
     updateReservationStatusInStorage(record.id, record.status);
 
-    // 2. Persist full record to Supabase
+    // 3. Update seats immediately: if rejected, release old seats; otherwise, replace old seats with new seats!
+    if (record.status === 'rejected') {
+      setExistingSeats(prev => prev.filter(s => !oldSeats.has(`${s.table}-${s.seat}`)));
+    } else {
+      const newSeatsList: ExistingSeat[] = [];
+      if (record.assignments) {
+        Object.entries(record.assignments).forEach(([idxStr, pos]: [string, any]) => {
+          if (pos?.table && pos?.seat) {
+            const guestIdx = parseInt(idxStr, 10);
+            const guest = record.guests?.[guestIdx] || record.guests?.[0];
+            newSeatsList.push({
+              table: pos.table,
+              seat: pos.seat,
+              guestName: guest?.name || record.mainBooker || 'ผู้ร่วมงาน',
+              category: guest?.category || record.category || 'guest',
+              ticketCode: guest?.ticketCode,
+              checkedIn: false
+            });
+          }
+        });
+      }
+
+      setExistingSeats(prev => [
+        // Remove previous seats of this reservation so old seats become VACANT immediately ("ว่างเมื่อเปลี่ยน")
+        ...prev.filter(s => !oldSeats.has(`${s.table}-${s.seat}`)),
+        // Add newly assigned seats
+        ...newSeatsList
+      ]);
+    }
+
+    // 4. Persist full record to Supabase
     try {
       await updateReservationOnServer(record);
       await refreshSeats();
@@ -189,6 +258,7 @@ export default function App() {
     newSeat: number,
     data: Partial<ExistingSeat>
   ) => {
+    // Previous seat becomes VACANT immediately in local state
     setExistingSeats(prev => [
       ...prev.filter(s => !(s.table === oldTable && s.seat === oldSeat)),
       {
@@ -211,20 +281,28 @@ export default function App() {
     setExistingSeats(prev => {
       const seatAData = prev.find(s => s.table === tableA && s.seat === seatA);
       const seatBData = prev.find(s => s.table === tableB && s.seat === seatB);
-      if (!seatAData || !seatBData) return prev;
+      if (!seatAData && !seatBData) return prev;
       return prev.map(s => {
         if (s.table === tableA && s.seat === seatA) {
-          return { ...seatBData, table: tableA, seat: seatA };
+          return seatBData ? { ...seatBData, table: tableA, seat: seatA } : s;
         }
         if (s.table === tableB && s.seat === seatB) {
-          return { ...seatAData, table: tableB, seat: seatB };
+          return seatAData ? { ...seatAData, table: tableB, seat: seatB } : s;
         }
         return s;
       });
     });
+
+    try {
+      await swapSeatsOnServer(tableA, seatA, tableB, seatB);
+      await refreshSeats();
+    } catch (err: any) {
+      console.warn('Swap seats notice:', err.message);
+    }
   };
 
   const handleDeleteSeat = async (table: number, seat: number) => {
+    // Immediately vacant on screen
     setExistingSeats(prev => prev.filter(s => !(s.table === table && s.seat === seat)));
     try {
       await deleteSeatOnServer(table, seat);
@@ -235,12 +313,35 @@ export default function App() {
   };
 
   const handleDeleteReservation = async (reservationId: string) => {
+    // 1. Immediately find and free assigned seats in local state (โต๊ะว่างจริงทันที)
+    const targetRes = reservations.find(r => r.id === reservationId);
+    if (targetRes) {
+      const seatsToFree = new Set<string>();
+      if (targetRes.assignments) {
+        Object.values(targetRes.assignments).forEach((a: any) => {
+          if (a?.table && a?.seat) seatsToFree.add(`${a.table}-${a.seat}`);
+        });
+      }
+      if (targetRes.guests) {
+        targetRes.guests.forEach(g => {
+          if (g.table && g.seat) seatsToFree.add(`${g.table}-${g.seat}`);
+        });
+      }
+      if (seatsToFree.size > 0) {
+        setExistingSeats(prev => prev.filter(s => !seatsToFree.has(`${s.table}-${s.seat}`)));
+      }
+    }
+
+    // 2. Remove from local reservations list immediately (ชื่อหายไปจริงทันที)
+    setReservations(prev => prev.filter(r => r.id !== reservationId));
+
+    // 3. Delete from Supabase server
     try {
       const result = await deleteReservationFromServer(reservationId);
       window.alert(result.message || 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
-      setReservations(prev => prev.filter(r => r.id !== reservationId));
       await refreshSeats();
     } catch (error) {
+      await refreshSeats();
       window.alert(error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการลบข้อมูลการจองจากเซิร์ฟเวอร์');
     }
   };
