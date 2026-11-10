@@ -340,9 +340,12 @@ export default function App() {
       const result = await deleteReservationFromServer(reservationId);
       window.alert(result.message || 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
       await refreshSeats();
+      await loadAdminReservations();
     } catch (error) {
       await refreshSeats();
+      await loadAdminReservations();
       window.alert(error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการลบข้อมูลการจองจากเซิร์ฟเวอร์');
+      throw error;
     }
   };
 

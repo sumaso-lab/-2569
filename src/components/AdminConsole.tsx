@@ -4060,8 +4060,9 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 type="button"
-                onClick={() => setDeletingReservation(null)}
-                className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors cursor-pointer"
+                disabled={isDeleting}
+                onClick={() => !isDeleting && setDeletingReservation(null)}
+                className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
               >
                 ยกเลิก
               </button>

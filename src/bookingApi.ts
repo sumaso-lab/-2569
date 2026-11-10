@@ -16,22 +16,11 @@ export async function request<T>(name: string, payload?: unknown, authToken?: st
     ? `${base}/functions/v1/${name}`
     : `/supabase-functions/${name}`;
 
-  let adminPasscode = '';
-  try {
-    if (typeof sessionStorage !== 'undefined') {
-      adminPasscode = sessionStorage.getItem('grad69_admin_passcode') || '';
-    }
-  } catch {}
-
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     apikey: anon,
     Authorization: authToken ? `Bearer ${authToken}` : `Bearer ${anon}`
   };
-
-  if (adminPasscode) {
-    headers['x-admin-passcode'] = adminPasscode;
-  }
 
   try {
     const response = await fetch(primaryEndpoint, {
@@ -174,25 +163,31 @@ export async function fetchAdminReservations(): Promise<ReservationRecord[]> {
  * Authenticates using Supabase Auth token if present.
  */
 export async function deleteReservationFromServer(
-  reservationId: string,
-  customPasscode?: string
+  reservationId: string
 ): Promise<{ success: boolean; freedSeats: number; message: string }> {
   const { supabase } = await import('./supabase');
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
 
-  let passcode = customPasscode || '';
-  if (!passcode && typeof sessionStorage !== 'undefined') {
-    passcode = sessionStorage.getItem('grad69_admin_passcode') || '2569';
+  let passcode: string | undefined;
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const stored = sessionStorage.getItem('grad69_admin_passcode');
+      if (stored) passcode = stored;
+    }
+  } catch {}
+
+  const payload: Record<string, any> = {
+    action: 'delete-reservation',
+    reservationId
+  };
+  if (passcode) {
+    payload.adminPasscode = passcode;
   }
 
   return request<{ success: boolean; freedSeats: number; message: string }>(
     'admin-api',
-    {
-      action: 'delete-reservation',
-      reservationId,
-      adminPasscode: passcode || '2569'
-    },
+    payload,
     token
   );
 }
