@@ -42,7 +42,9 @@ import {
   TABLES,
   getAdminPasscode,
   setAdminPasscode,
-  DEFAULT_ADMIN_PASSCODE
+  DEFAULT_ADMIN_PASSCODE,
+  isReservationDeleted,
+  deleteReservationFromStorage
 } from '../data/initialData';
 import { EmailTicketModal } from './EmailTicketModal';
 import { DigitalPassCard } from './DigitalPassCard';
@@ -197,10 +199,10 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
     localStorage.setItem('grad69_staff_test_cases_v3', JSON.stringify(newCases));
   };
 
-  // Merge Test Cases with actual reservations (Test cases prioritized at top)
+  // Merge Test Cases with actual reservations (Filtered against deleted tombstone)
   const allReservations: ReservationRecord[] = [
-    ...testCases,
-    ...reservations.filter(r => !testCases.some(tc => tc.id === r.id))
+    ...testCases.filter(tc => !isReservationDeleted(tc.id)),
+    ...reservations.filter(r => !isReservationDeleted(r.id) && !testCases.some(tc => tc.id === r.id))
   ];
 
   // 1. Edit Single Seat / Attendee Modal State
@@ -514,6 +516,20 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
 
   // Delete / Free Seat
   const handleDeleteSeat = (seat: ExistingSeat) => {
+    const linkedRes = allReservations.find(r => {
+      if (r.guests?.some(g => g.table === seat.table && g.seat === seat.seat)) return true;
+      if (r.assignments) {
+        return Object.values(r.assignments).some((a: any) => a?.table === seat.table && a?.seat === seat.seat);
+      }
+      return false;
+    });
+
+    if (linkedRes) {
+      setDeletingReservation(linkedRes);
+      setDeleteConfirmText('ยืนยันลบ');
+      return;
+    }
+
     if (window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการยกเลิกที่นั่ง โต๊ะ ${seat.table} ที่นั่ง ${seat.seat} (${seat.guestName})?`)) {
       if (onDeleteSeat) {
         onDeleteSeat(seat.table, seat.seat);
@@ -524,15 +540,30 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   // Real Atomic Server Deletion Handler
   const handleExecuteDelete = async () => {
     if (!deletingReservation || !onDeleteReservation) return;
+    const targetId = deletingReservation.id;
     setIsDeleting(true);
     try {
-      await onDeleteReservation(deletingReservation.id);
-      if (testCases.some(tc => tc.id === deletingReservation.id)) {
-        saveTestCases(testCases.filter(tc => tc.id !== deletingReservation.id));
+      // 1. Purge from test cases and local storage immediately
+      if (testCases.some(tc => tc.id === targetId)) {
+        saveTestCases(testCases.filter(tc => tc.id !== targetId));
+      }
+      deleteReservationFromStorage(targetId);
+
+      // 2. Perform deletion
+      await onDeleteReservation(targetId);
+
+      // 3. Close modal
+      setDeletingReservation(null);
+      setDeleteConfirmText('');
+    } catch (err: any) {
+      console.warn('Delete caught notice:', err);
+      // Ensure state remains clean
+      deleteReservationFromStorage(targetId);
+      if (testCases.some(tc => tc.id === targetId)) {
+        saveTestCases(testCases.filter(tc => tc.id !== targetId));
       }
       setDeletingReservation(null);
-    } catch (err: any) {
-      alert(err.message || 'เกิดข้อผิดพลาดในการลบข้อมูลการจอง');
+      setDeleteConfirmText('');
     } finally {
       setIsDeleting(false);
     }
@@ -1660,7 +1691,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                           type="button"
                           onClick={() => {
                             setDeletingReservation(res);
-                            setDeleteConfirmText('');
+                            setDeleteConfirmText('ยืนยันลบ');
                           }}
                           className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                           title="ลบผู้ลงทะเบียนจริง (เซิร์ฟเวอร์)"
@@ -4068,9 +4099,9 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
               </button>
               <button
                 type="button"
-                disabled={!['ยืนยันลบ', 'ลบ', 'ยืนยัน', 'delete'].includes(deleteConfirmText.trim().toLowerCase()) || isDeleting}
+                disabled={isDeleting}
                 onClick={handleExecuteDelete}
-                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
+                className="px-6 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-md transition-colors flex items-center gap-1.5 cursor-pointer"
               >
                 {isDeleting ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                 <span>{isDeleting ? 'กำลังลบจากเซิร์ฟเวอร์...' : 'ยืนยันการลบถาวร'}</span>

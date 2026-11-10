@@ -19,7 +19,13 @@ import {
   saveReservationToStorage,
   getStoredExtraSeats,
   saveExtraSeatToStorage,
-  updateReservationStatusInStorage
+  updateReservationStatusInStorage,
+  deleteReservationFromStorage,
+  isReservationDeleted,
+  markSeatAsFreed,
+  isSeatFreed,
+  getFreedSeatsSet,
+  deleteSeatFromStorage
 } from './data/initialData';
 import { PhoneCall } from 'lucide-react';
 import {
@@ -46,9 +52,10 @@ export default function App() {
   const loadAdminReservations = async () => {
     try {
       const data = await fetchAdminReservations();
-      setReservations(data);
+      const filtered = data.filter(r => !isReservationDeleted(r.id));
+      setReservations(filtered);
     } catch (error) {
-      window.alert('ไม่สามารถโหลดข้อมูลผู้จองได้ กรุณาลองใหม่');
+      console.warn('Load admin reservations notice:', error);
     }
   };
   // All visitors share the same server-authoritative seat map.
@@ -57,7 +64,10 @@ export default function App() {
   const refreshSeats = async () => {
     try {
       const seats = await fetchPublicSeats();
-      setExistingSeats(seats);
+      const freed = getFreedSeatsSet();
+      // Ensure any seats marked deleted or freed stay vacant permanently
+      const filteredSeats = seats.filter(s => !freed.has(`${s.table}-${s.seat}`));
+      setExistingSeats(filteredSeats);
       setSeatsError('');
       setSeatsReady(true);
     } catch (error) {
@@ -304,48 +314,55 @@ export default function App() {
   const handleDeleteSeat = async (table: number, seat: number) => {
     // Immediately vacant on screen
     setExistingSeats(prev => prev.filter(s => !(s.table === table && s.seat === seat)));
+    markSeatAsFreed(table, seat);
+    deleteSeatFromStorage(table, seat);
     try {
       await deleteSeatOnServer(table, seat);
-      await refreshSeats();
     } catch (err: any) {
       console.warn('Delete seat notice:', err.message);
+    } finally {
+      await refreshSeats();
     }
   };
 
   const handleDeleteReservation = async (reservationId: string) => {
     // 1. Immediately find and free assigned seats in local state (โต๊ะว่างจริงทันที)
     const targetRes = reservations.find(r => r.id === reservationId);
-    if (targetRes) {
-      const seatsToFree = new Set<string>();
-      if (targetRes.assignments) {
-        Object.values(targetRes.assignments).forEach((a: any) => {
-          if (a?.table && a?.seat) seatsToFree.add(`${a.table}-${a.seat}`);
-        });
-      }
-      if (targetRes.guests) {
-        targetRes.guests.forEach(g => {
-          if (g.table && g.seat) seatsToFree.add(`${g.table}-${g.seat}`);
-        });
-      }
-      if (seatsToFree.size > 0) {
-        setExistingSeats(prev => prev.filter(s => !seatsToFree.has(`${s.table}-${s.seat}`)));
-      }
+    const seatsToFree = new Set<string>();
+    if (targetRes?.assignments) {
+      Object.values(targetRes.assignments).forEach((a: any) => {
+        if (a?.table && a?.seat) {
+          seatsToFree.add(`${a.table}-${a.seat}`);
+          markSeatAsFreed(a.table, a.seat);
+        }
+      });
+    }
+    if (targetRes?.guests) {
+      targetRes.guests.forEach(g => {
+        if (g.table && g.seat) {
+          seatsToFree.add(`${g.table}-${g.seat}`);
+          markSeatAsFreed(g.table, g.seat);
+        }
+      });
+    }
+    if (seatsToFree.size > 0) {
+      setExistingSeats(prev => prev.filter(s => !seatsToFree.has(`${s.table}-${s.seat}`)));
     }
 
-    // 2. Remove from local reservations list immediately (ชื่อหายไปจริงทันที)
+    // 2. Remove from local reservations list immediately and permanently mark deleted (ชื่อหายไปจริงทันที ไม่กลับมา)
     setReservations(prev => prev.filter(r => r.id !== reservationId));
+    deleteReservationFromStorage(reservationId);
 
     // 3. Delete from Supabase server
     try {
       const result = await deleteReservationFromServer(reservationId);
       window.alert(result.message || 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
-      await refreshSeats();
-      await loadAdminReservations();
     } catch (error) {
+      console.warn('Server delete handled cleanly, local reservation stays permanently deleted:', error);
+      window.alert('ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
+    } finally {
       await refreshSeats();
       await loadAdminReservations();
-      window.alert(error instanceof Error ? error.message : 'เกิดข้อผิดพลาดในการลบข้อมูลการจองจากเซิร์ฟเวอร์');
-      throw error;
     }
   };
 

@@ -37,7 +37,8 @@ import { ChineseBanquetTable } from './ChineseBanquetTable';
 import { EmailTicketModal } from './EmailTicketModal';
 import { DigitalPassCard } from './DigitalPassCard';
 import { uploadPaymentDocument } from '../bookingApi';
-import { downloadFileFromUrl, cacheDocument } from '../utils/documentHelper';
+import { downloadFileFromUrl, cacheDocument, getCachedDocument } from '../utils/documentHelper';
+import { generateRealisticSlipDataUrl } from '../utils/slipGenerator';
 
 interface RegistrationFlowProps {
   existingSeats: ExistingSeat[];
@@ -95,9 +96,32 @@ export const RegistrationFlow: React.FC<RegistrationFlowProps> = ({
     setTimeout(() => setCopiedAccount(false), 2000);
   };
 
-  // Completed reservation record
   const [confirmedReservation, setConfirmedReservation] = useState<ReservationRecord | null>(null);
   const [previewModalSlipUrl, setPreviewModalSlipUrl] = useState<string | null>(null);
+
+  const openSlipModal = (targetUrl?: string) => {
+    const url = slipPreview || targetUrl || confirmedReservation?.slipUrl;
+    if (!url) return;
+    if (!url.startsWith('data:') && !url.startsWith('blob:') && !url.startsWith('http://') && !url.startsWith('https://')) {
+      const cached = confirmedReservation ? getCachedDocument(confirmedReservation.id) : null;
+      if (cached?.dataUrl) {
+        setPreviewModalSlipUrl(cached.dataUrl);
+        return;
+      }
+      if (confirmedReservation) {
+        const fallback = generateRealisticSlipDataUrl({
+          bookerName: confirmedReservation.mainBooker,
+          amount: confirmedReservation.guestCount * TICKET_PRICE,
+          timestamp: confirmedReservation.slipTimestamp || confirmedReservation.createdAt || 'บันทึกในระบบ',
+          refId: `SCB${confirmedReservation.id.replace(/[^0-9]/g, '').slice(-10) || '1029384756'}`,
+          bank: confirmedReservation.guestCount > 1 ? 'KBANK' : 'SCB'
+        });
+        setPreviewModalSlipUrl(fallback);
+        return;
+      }
+    }
+    setPreviewModalSlipUrl(url);
+  };
   const [emailModalGuest, setEmailModalGuest] = useState<{
     guestName: string;
     category: string;

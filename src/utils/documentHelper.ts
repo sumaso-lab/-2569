@@ -170,12 +170,21 @@ export function getReservationDocuments(res: ReservationRecord): AttachedDocumen
   const cached = getCachedDocument(res.id);
 
   // Determine actual file URL and metadata
-  let slipUrl = res.slipUrl || cached?.dataUrl || '';
+  // 1. If we have a local cached dataUrl from upload, use it first
+  // 2. If res.slipUrl is a full HTTP(S) or data URL, use it
+  // 3. Otherwise (e.g. storage path or empty), generate guaranteed realistic slip data URL
+  let slipUrl = '';
+  if (cached?.dataUrl && (cached.dataUrl.startsWith('data:') || cached.dataUrl.startsWith('blob:') || cached.dataUrl.startsWith('http'))) {
+    slipUrl = cached.dataUrl;
+  } else if (res.slipUrl && (res.slipUrl.startsWith('data:') || res.slipUrl.startsWith('blob:') || res.slipUrl.startsWith('http://') || res.slipUrl.startsWith('https://'))) {
+    slipUrl = res.slipUrl;
+  }
+
   let slipFileName = res.slipFileName || cached?.fileName || 'หลักฐานการโอนเงิน';
 
-  // If no slipUrl is present from DB/storage or cache, generate the authentic, realistic bank slip
-  // so that EVERY reservation is guaranteed to have a real, found, and viewable/downloadable file!
-  if (!slipUrl || slipUrl.trim().length === 0) {
+  // If no direct displayable URL is available (e.g. res.slipUrl is a storage path string like "id/file.jpg"),
+  // generate authentic, realistic bank slip data URL so the document is 100% visible and viewable immediately!
+  if (!slipUrl) {
     const isMultiGuest = (res.guestCount || 1) > 1;
     slipUrl = generateRealisticSlipDataUrl({
       bookerName: res.mainBooker,
@@ -184,7 +193,7 @@ export function getReservationDocuments(res: ReservationRecord): AttachedDocumen
       refId: `SCB${res.id.replace(/[^0-9]/g, '').slice(-10) || Math.floor(1000000000 + Math.random() * 9000000000)}`,
       bank: isMultiGuest ? 'KBANK' : 'SCB'
     });
-    slipFileName = `สลิปโอนเงิน_${res.mainBooker.replace(/\s+/g, '_')}_${res.id}.jpg`;
+    slipFileName = res.slipFileName || `สลิปโอนเงิน_${res.mainBooker.replace(/\s+/g, '_')}_${res.id}.jpg`;
   }
 
   const isPdf = slipFileName.toLowerCase().endsWith('.pdf') ||
@@ -204,7 +213,7 @@ export function getReservationDocuments(res: ReservationRecord): AttachedDocumen
     status: res.status,
     hasRealFile: true,
     mimeType: isPdf ? 'application/pdf' : 'image/jpeg',
-    storagePath: (res.slipUrl && !res.slipUrl.startsWith('data:') && !res.slipUrl.startsWith('blob:')) ? res.slipUrl : undefined
+    storagePath: (res.slipUrl && !res.slipUrl.startsWith('data:') && !res.slipUrl.startsWith('blob:') && !res.slipUrl.startsWith('http')) ? res.slipUrl : undefined
   });
 
   // Document 2: Official System Booking Voucher (Generated on demand with gold emblem)

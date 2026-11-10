@@ -104,19 +104,111 @@ export function updateReservationStatusInStorage(
   }
 }
 
+const STORAGE_KEY_DELETED_IDS = 'grad69_deleted_reservation_ids_v1';
+
+export function getDeletedReservationIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_DELETED_IDS);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markReservationAsDeleted(reservationId: string): void {
+  try {
+    const current = getDeletedReservationIds();
+    current.add(reservationId);
+    localStorage.setItem(STORAGE_KEY_DELETED_IDS, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.error('Failed to mark reservation as deleted:', e);
+  }
+}
+
+const STORAGE_KEY_FREED_SEATS = 'grad69_freed_seats_v1';
+
+export function getFreedSeatsSet(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_FREED_SEATS);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function markSeatAsFreed(table: number, seat: number): void {
+  try {
+    const current = getFreedSeatsSet();
+    current.add(`${table}-${seat}`);
+    localStorage.setItem(STORAGE_KEY_FREED_SEATS, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.error('Failed to mark seat as freed:', e);
+  }
+}
+
+export function isSeatFreed(table: number, seat: number): boolean {
+  return getFreedSeatsSet().has(`${table}-${seat}`);
+}
+
+export function unmarkSeatAsFreed(table: number, seat: number): void {
+  try {
+    const current = getFreedSeatsSet();
+    current.delete(`${table}-${seat}`);
+    localStorage.setItem(STORAGE_KEY_FREED_SEATS, JSON.stringify(Array.from(current)));
+  } catch (e) {
+    console.error('Failed to unmark seat as freed:', e);
+  }
+}
+
+export function isReservationDeleted(reservationId: string): boolean {
+  if (!reservationId) return false;
+  return getDeletedReservationIds().has(reservationId);
+}
+
 export function deleteReservationFromStorage(reservationId: string): boolean {
   try {
+    markReservationAsDeleted(reservationId);
+
     const reservations = getStoredReservations();
     const target = reservations.find(r => r.id === reservationId);
     const filtered = reservations.filter(r => r.id !== reservationId);
     localStorage.setItem(STORAGE_KEY_RESERVATIONS, JSON.stringify(filtered));
 
-    // Also remove assigned seats
-    if (target && target.assignments) {
+    // Also remove from staff test cases if present
+    try {
+      const savedTestCases = localStorage.getItem('grad69_staff_test_cases_v3');
+      if (savedTestCases) {
+        const testList = JSON.parse(savedTestCases);
+        if (Array.isArray(testList)) {
+          const updatedTestList = testList.filter((tc: any) => tc.id !== reservationId);
+          localStorage.setItem('grad69_staff_test_cases_v3', JSON.stringify(updatedTestList));
+        }
+      }
+    } catch {}
+
+    // Also remove assigned seats and mark them freed
+    if (target) {
+      if (target.assignments) {
+        Object.values(target.assignments).forEach((pos: any) => {
+          if (pos?.table && pos?.seat) {
+            markSeatAsFreed(pos.table, pos.seat);
+          }
+        });
+      }
+      if (target.guests) {
+        target.guests.forEach((g: any) => {
+          if (g?.table && g?.seat) {
+            markSeatAsFreed(g.table, g.seat);
+          }
+        });
+      }
       const extraSeats = getStoredExtraSeats();
-      const targetSeats = Object.values(target.assignments);
       const remainingSeats = extraSeats.filter(
-        s => !targetSeats.some(ts => ts.table === s.table && ts.seat === s.seat)
+        s => !isSeatFreed(s.table, s.seat)
       );
       localStorage.setItem(STORAGE_KEY_EXTRA_SEATS, JSON.stringify(remainingSeats));
     }

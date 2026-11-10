@@ -27,6 +27,13 @@ export default defineConfig(({ command }) => {
           headers: {
             Origin: 'https://sumaso-lab.github.io',
           },
+          configure: (proxy) => {
+            proxy.on('proxyRes', (proxyRes) => {
+              proxyRes.headers['access-control-allow-origin'] = '*';
+              proxyRes.headers['access-control-allow-methods'] = 'GET, POST, OPTIONS, PUT, DELETE';
+              proxyRes.headers['access-control-allow-headers'] = 'authorization, apikey, content-type, x-client-info';
+            });
+          },
         },
       },
     },
