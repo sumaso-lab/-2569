@@ -79,6 +79,41 @@ interface AdminConsoleProps {
 
 const TICKET_PRICE = 799;
 
+export function parseReservationDate(dateStr?: string): Date | null {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  if (!isNaN(d.getTime())) return d;
+
+  const parts = dateStr.match(/(\d+)\/(\d+)\/(\d+)(?:[,\s]+(\d+):(\d+)(?::(\d+))?)?/);
+  if (parts) {
+    const day = parseInt(parts[1], 10);
+    const month = parseInt(parts[2], 10) - 1;
+    let year = parseInt(parts[3], 10);
+    if (year > 2400) year -= 543;
+    const hours = parts[4] ? parseInt(parts[4], 10) : 0;
+    const minutes = parts[5] ? parseInt(parts[5], 10) : 0;
+    const seconds = parts[6] ? parseInt(parts[6], 10) : 0;
+    const parsed = new Date(year, month, day, hours, minutes, seconds);
+    if (!isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+export function isPendingOver48Hours(res: { status: string; createdAt?: string; slipTimestamp?: string }): {
+  isOverdue: boolean;
+  hoursAgo: number;
+} {
+  if (res.status !== 'pending') return { isOverdue: false, hoursAgo: 0 };
+  const d = parseReservationDate(res.createdAt) || parseReservationDate(res.slipTimestamp);
+  if (!d) return { isOverdue: false, hoursAgo: 0 };
+  const diffMs = Date.now() - d.getTime();
+  const hoursAgo = Math.floor(diffMs / (1000 * 60 * 60));
+  return {
+    isOverdue: hoursAgo >= 48,
+    hoursAgo
+  };
+}
+
 export const AdminConsole: React.FC<AdminConsoleProps> = ({
   existingSeats,
   reservations,
@@ -112,7 +147,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTableFilter, setSelectedTableFilter] = useState<number | 'all'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'checkedIn' | 'notCheckedIn'>('all');
-  const [slipFilter, setSlipFilter] = useState<'all' | 'pending' | 'verified' | 'rejected'>('all');
+  const [slipFilter, setSlipFilter] = useState<'all' | 'pending' | 'pendingOver48h' | 'verified' | 'rejected'>('all');
 
   // All Documents Gallery Filters
   const [docTypeFilter, setDocTypeFilter] = useState<'all' | 'slip' | 'voucher' | 'other'>('all');
@@ -548,9 +583,15 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
     return true;
   });
 
+  const overduePendingCount = allReservations.filter(r => r.status === 'pending' && isPendingOver48Hours(r).isOverdue).length;
+
   // Filtered Slips
   const filteredReservations = allReservations.filter(r => {
-    if (slipFilter !== 'all' && r.status !== slipFilter) return false;
+    if (slipFilter === 'pendingOver48h') {
+      if (r.status !== 'pending' || !isPendingOver48Hours(r).isOverdue) return false;
+    } else if (slipFilter !== 'all' && r.status !== slipFilter) {
+      return false;
+    }
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       return (
@@ -732,6 +773,44 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
         slipTimestamp: timestamp,
         createdAt: timestamp,
         notes: 'เคสทดสอบเจ้าหน้าที่: อาจารย์และครอบครัว 3 ที่นั่ง รอตรวจสลิป'
+      };
+    } else if ((type as string) === 'pending_overdue') {
+      const id = `TEST-URGENT-${Date.now().toString().slice(-4)}`;
+      const pastTime = new Date(Date.now() - 52 * 60 * 60 * 1000); // 52 hours ago
+      const pastTimestamp = pastTime.toLocaleString('th-TH');
+      newCase = {
+        id,
+        mainBooker: 'พว. ธีรภัทร ชาญวิทย์ (รอดำเนินการ 52 ชม.)',
+        phone: '085-777-9999',
+        email: 'theerapat.test@kku.ac.th',
+        category: 'graduate',
+        academicYear: '2569',
+        guestCount: 1,
+        totalAmount: 799,
+        guests: [
+          {
+            id: `${id}-g1`,
+            name: 'พว. ธีรภัทร ชาญวิทย์',
+            category: 'graduate',
+            phone: '085-777-9999',
+            email: 'theerapat.test@kku.ac.th',
+            table: 4,
+            seat: 1,
+            ticketCode: `GRAD69-T04S01-${Math.floor(10 + Math.random() * 90)}`
+          }
+        ],
+        assignments: { 0: { table: 4, seat: 1 } },
+        status: 'pending',
+        slipUrl: generateRealisticSlipDataUrl({
+          bank: 'SCB',
+          bookerName: 'พว. ธีรภัทร ชาญวิทย์',
+          amount: 799,
+          refId: `SCB${Math.floor(100000000000 + Math.random() * 900000000000)}`,
+          dateStr: pastTimestamp
+        }),
+        slipTimestamp: pastTimestamp,
+        createdAt: pastTime.toISOString(),
+        notes: 'เคสทดสอบรอดำเนินการเกิน 48 ชม. (ด่วนพิเศษ)'
       };
     } else {
       const id = `TEST-V1-${Date.now().toString().slice(-4)}`;
@@ -1250,7 +1329,7 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1">
               <button
                 type="button"
                 onClick={() => handleAddTestCase('pending_single')}
@@ -1287,11 +1366,28 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
 
               <button
                 type="button"
+                onClick={() => handleAddTestCase('pending_overdue' as any)}
+                className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 border border-rose-500/40 hover:border-rose-400 text-left transition-all group cursor-pointer"
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-rose-400">เคสที่ 3 · รอเกิน 48 ชม.</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950 text-rose-300 font-semibold border border-rose-700/50 animate-pulse">ด่วน 48h+</span>
+                </div>
+                <div className="font-semibold text-xs text-slate-200 group-hover:text-rose-200">
+                  พว. ธีรภัทร (ค้าง 52 ชม.)
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">
+                  โต๊ะ 4 ที่นั่ง 1 · ป้ายเตือนด่วน
+                </div>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleAddTestCase('verified_single')}
                 className="p-3 rounded-xl bg-slate-800/90 hover:bg-slate-700/90 border border-emerald-500/40 hover:border-emerald-400 text-left transition-all group cursor-pointer"
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[11px] font-bold text-emerald-400">เคสที่ 3 · อนุมัติแล้ว (799฿)</span>
+                  <span className="text-[11px] font-bold text-emerald-400">เคสที่ 4 · อนุมัติแล้ว (799฿)</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-semibold border border-emerald-700/50">บัตรพร้อม</span>
                 </div>
                 <div className="font-semibold text-xs text-slate-200 group-hover:text-emerald-200">
@@ -1319,6 +1415,12 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
               {[
                 { id: 'all', label: 'ทั้งหมด' },
                 { id: 'pending', label: 'รอตรวจ' },
+                {
+                  id: 'pendingOver48h',
+                  label: `⏳ รอตรวจเกิน 48 ชม. (${overduePendingCount})`,
+                  isUrgent: true,
+                  count: overduePendingCount
+                },
                 { id: 'verified', label: 'อนุมัติแล้ว' },
                 { id: 'rejected', label: 'ปฏิเสธ' }
               ].map(f => (
@@ -1326,13 +1428,17 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                   key={f.id}
                   type="button"
                   onClick={() => setSlipFilter(f.id as any)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
                     slipFilter === f.id
-                      ? 'bg-amber-500 text-slate-950 font-bold'
+                      ? f.isUrgent
+                        ? 'bg-rose-600 text-white font-bold ring-2 ring-rose-400'
+                        : 'bg-amber-500 text-slate-950 font-bold'
+                      : f.isUrgent && f.count && f.count > 0
+                      ? 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-300 font-bold'
                       : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
                   }`}
                 >
-                  {f.label}
+                  <span>{f.label}</span>
                 </button>
               ))}
             </div>
@@ -1347,12 +1453,15 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
               filteredReservations.map(res => {
                 const hasAssignedSeats = res.assignments && Object.keys(res.assignments).length > 0;
                 const docs = getReservationDocuments(res);
+                const { isOverdue, hoursAgo } = isPendingOver48Hours(res);
 
                 return (
                   <div
                     key={res.id}
                     className={`p-5 rounded-2xl border-2 transition-all flex flex-col lg:flex-row lg:items-center justify-between gap-4 ${
-                      res.status === 'pending'
+                      isOverdue
+                        ? 'border-rose-400 bg-rose-50/50 ring-2 ring-rose-400/40 shadow-md shadow-rose-500/10'
+                        : res.status === 'pending'
                         ? 'border-amber-300 bg-amber-50/40 ring-1 ring-amber-400/20'
                         : res.status === 'verified'
                         ? 'border-emerald-200 bg-emerald-50/20'
@@ -1398,10 +1507,20 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
                           <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
                             {res.id}
                           </span>
+
+                          {isOverdue && (
+                            <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-rose-600 text-white animate-pulse flex items-center gap-1 shadow-sm border border-rose-700">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>รอดำเนินการเกิน 48 ชม. ({hoursAgo} ชม. - ด่วน)</span>
+                            </span>
+                          )}
+
                           <span
                             className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
                               res.status === 'pending'
-                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                ? isOverdue
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                  : 'bg-amber-100 text-amber-800 border border-amber-300'
                                 : res.status === 'verified'
                                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                                 : 'bg-rose-100 text-rose-800 border border-rose-300'

@@ -21,6 +21,7 @@ import {
   saveExtraSeatToStorage,
   updateReservationStatusInStorage
 } from './data/initialData';
+import { PhoneCall } from 'lucide-react';
 import {
   fetchPublicSeats,
   createReservation,
@@ -161,6 +162,78 @@ export default function App() {
     }
   };
 
+  const handleUpdateReservation = async (record: ReservationRecord) => {
+    // 1. Update state immediately
+    setReservations(prev => prev.map(r => r.id === record.id ? record : r));
+    updateReservationStatusInStorage(record.id, record.status);
+
+    // 2. Persist full record to Supabase
+    try {
+      await updateReservationOnServer(record);
+      await refreshSeats();
+    } catch (err: any) {
+      console.warn('Server reservation update notice:', err.message);
+    }
+  };
+
+  const handleUpdateSeat = (table: number, seat: number, updated: Partial<ExistingSeat>) => {
+    setExistingSeats(prev =>
+      prev.map(s => (s.table === table && s.seat === seat ? { ...s, ...updated } : s))
+    );
+  };
+
+  const handleReassignSeat = async (
+    oldTable: number,
+    oldSeat: number,
+    newTable: number,
+    newSeat: number,
+    data: Partial<ExistingSeat>
+  ) => {
+    setExistingSeats(prev => [
+      ...prev.filter(s => !(s.table === oldTable && s.seat === oldSeat)),
+      {
+        table: newTable,
+        seat: newSeat,
+        guestName: data.guestName || 'ผู้ร่วมงาน',
+        category: data.category || 'guest',
+        checkedIn: false
+      }
+    ]);
+    try {
+      await reassignSeatOnServer(oldTable, oldSeat, newTable, newSeat);
+      await refreshSeats();
+    } catch (err: any) {
+      console.warn('Reassign seat notice:', err.message);
+    }
+  };
+
+  const handleSwapSeats = async (tableA: number, seatA: number, tableB: number, seatB: number) => {
+    setExistingSeats(prev => {
+      const seatAData = prev.find(s => s.table === tableA && s.seat === seatA);
+      const seatBData = prev.find(s => s.table === tableB && s.seat === seatB);
+      if (!seatAData || !seatBData) return prev;
+      return prev.map(s => {
+        if (s.table === tableA && s.seat === seatA) {
+          return { ...seatBData, table: tableA, seat: seatA };
+        }
+        if (s.table === tableB && s.seat === seatB) {
+          return { ...seatAData, table: tableB, seat: seatB };
+        }
+        return s;
+      });
+    });
+  };
+
+  const handleDeleteSeat = async (table: number, seat: number) => {
+    setExistingSeats(prev => prev.filter(s => !(s.table === table && s.seat === seat)));
+    try {
+      await deleteSeatOnServer(table, seat);
+      await refreshSeats();
+    } catch (err: any) {
+      console.warn('Delete seat notice:', err.message);
+    }
+  };
+
   const handleDeleteReservation = async (reservationId: string) => {
     try {
       const result = await deleteReservationFromServer(reservationId);
@@ -281,6 +354,11 @@ export default function App() {
               onToggleCheckIn={handleToggleCheckIn}
               onResetData={handleResetData}
               onUpdateReservationStatus={handleUpdateReservationStatus}
+              onUpdateReservation={handleUpdateReservation}
+              onUpdateSeat={handleUpdateSeat}
+              onReassignSeat={handleReassignSeat}
+              onSwapSeats={handleSwapSeats}
+              onDeleteSeat={handleDeleteSeat}
               onAddManualSeat={handleAddManualSeat}
               onDeleteReservation={handleDeleteReservation}
               onStartTestRegistration={() => {
