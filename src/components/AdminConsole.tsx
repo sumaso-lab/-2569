@@ -70,7 +70,7 @@ interface AdminConsoleProps {
   onResetData: () => void;
   onUpdateReservationStatus?: (id: string, status: 'verified' | 'pending' | 'rejected') => void;
   onUpdateReservation?: (record: ReservationRecord) => void;
-  onDeleteReservation?: (id: string) => void;
+  onDeleteReservation?: (id: string, record?: ReservationRecord) => Promise<void> | void;
   onUpdateSeat?: (table: number, seat: number, updated: Partial<ExistingSeat>) => void;
   onReassignSeat?: (oldTable: number, oldSeat: number, newTable: number, newSeat: number, data: Partial<ExistingSeat>) => void;
   onSwapSeats?: (tableA: number, seatA: number, tableB: number, seatB: number) => void;
@@ -540,7 +540,8 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
   // Real Atomic Server Deletion Handler
   const handleExecuteDelete = async () => {
     if (!deletingReservation || !onDeleteReservation) return;
-    const targetId = deletingReservation.id;
+    const target = deletingReservation;
+    const targetId = target.id;
     setIsDeleting(true);
     try {
       // 1. Purge from test cases and local storage immediately
@@ -549,8 +550,8 @@ export const AdminConsole: React.FC<AdminConsoleProps> = ({
       }
       deleteReservationFromStorage(targetId);
 
-      // 2. Perform deletion
-      await onDeleteReservation(targetId);
+      // 2. Perform deletion passing full target record
+      await onDeleteReservation(targetId, target);
 
       // 3. Close modal
       setDeletingReservation(null);

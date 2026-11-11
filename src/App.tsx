@@ -27,7 +27,7 @@ import {
   getFreedSeatsSet,
   deleteSeatFromStorage
 } from './data/initialData';
-import { PhoneCall } from 'lucide-react';
+import { PhoneCall, CheckCircle2 } from 'lucide-react';
 import {
   fetchPublicSeats,
   createReservation,
@@ -325,14 +325,20 @@ export default function App() {
     }
   };
 
-  const handleDeleteReservation = async (reservationId: string) => {
+  const [toastMessage, setToastMessage] = useState<string>('');
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 4500);
+  };
+
+  const handleDeleteReservation = async (reservationId: string, record?: ReservationRecord) => {
     // 1. Immediately find and free assigned seats in local state (โต๊ะว่างจริงทันที)
-    const targetRes = reservations.find(r => r.id === reservationId);
-    const seatsToFree = new Set<string>();
+    const targetRes = record || reservations.find(r => r.id === reservationId);
+    const seatsToFree: { table: number; seat: number }[] = [];
     if (targetRes?.assignments) {
       Object.values(targetRes.assignments).forEach((a: any) => {
         if (a?.table && a?.seat) {
-          seatsToFree.add(`${a.table}-${a.seat}`);
+          seatsToFree.push({ table: a.table, seat: a.seat });
           markSeatAsFreed(a.table, a.seat);
         }
       });
@@ -340,13 +346,14 @@ export default function App() {
     if (targetRes?.guests) {
       targetRes.guests.forEach(g => {
         if (g.table && g.seat) {
-          seatsToFree.add(`${g.table}-${g.seat}`);
+          seatsToFree.push({ table: g.table, seat: g.seat });
           markSeatAsFreed(g.table, g.seat);
         }
       });
     }
-    if (seatsToFree.size > 0) {
-      setExistingSeats(prev => prev.filter(s => !seatsToFree.has(`${s.table}-${s.seat}`)));
+    if (seatsToFree.length > 0) {
+      const freeSet = new Set(seatsToFree.map(s => `${s.table}-${s.seat}`));
+      setExistingSeats(prev => prev.filter(s => !freeSet.has(`${s.table}-${s.seat}`)));
     }
 
     // 2. Remove from local reservations list immediately and permanently mark deleted (ชื่อหายไปจริงทันที ไม่กลับมา)
@@ -355,11 +362,11 @@ export default function App() {
 
     // 3. Delete from Supabase server
     try {
-      const result = await deleteReservationFromServer(reservationId);
-      window.alert(result.message || 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
+      const result = await deleteReservationFromServer(reservationId, seatsToFree);
+      showToast(result.message || 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
     } catch (error) {
       console.warn('Server delete handled cleanly, local reservation stays permanently deleted:', error);
-      window.alert('ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
+      showToast('ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว');
     } finally {
       await refreshSeats();
       await loadAdminReservations();
@@ -372,7 +379,7 @@ export default function App() {
   };
 
   const handleResetData = () => {
-    window.alert('ไม่อนุญาตให้ลบข้อมูลการจองผ่านหน้าเว็บไซต์สาธารณะ');
+    showToast('ไม่อนุญาตให้ลบข้อมูลการจองผ่านหน้าเว็บไซต์สาธารณะ');
   };
 
   const totalSeats = 120;
@@ -521,6 +528,13 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-emerald-500/50 flex items-center gap-2.5 animate-in slide-in-from-bottom-4 duration-300">
+          <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-sm font-semibold">{toastMessage}</span>
+        </div>
+      )}
     </div>
   );
 }

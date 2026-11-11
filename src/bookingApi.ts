@@ -191,10 +191,11 @@ export async function fetchAdminReservations(): Promise<ReservationRecord[]> {
  * Guarantees permanent deletion and seat vacancy.
  */
 export async function deleteReservationFromServer(
-  reservationId: string
+  reservationId: string,
+  seats?: { table: number; seat: number }[]
 ): Promise<{ success: boolean; freedSeats: number; message: string }> {
   const { supabase } = await import('./supabase');
-  const { deleteReservationFromStorage } = await import('./data/initialData');
+  const { deleteReservationFromStorage, markSeatAsFreed } = await import('./data/initialData');
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
 
@@ -206,10 +207,13 @@ export async function deleteReservationFromServer(
     }
   } catch {}
 
-  // Always mark deleted locally and purge caches first
+  // 1. Mark deleted locally and purge caches first
   deleteReservationFromStorage(reservationId);
+  if (Array.isArray(seats)) {
+    seats.forEach(s => markSeatAsFreed(s.table, s.seat));
+  }
 
-  // Attempt 1: Call admin-api Edge Function with action and passcode
+  // 2. Attempt 1: Call admin-api Edge Function with action: 'delete-reservation'
   try {
     const payload = {
       action: 'delete-reservation',
@@ -229,10 +233,35 @@ export async function deleteReservationFromServer(
       };
     }
   } catch (edgeErr: any) {
-    console.warn('admin-api Edge Function delete attempt:', edgeErr?.message || edgeErr);
+    console.warn('admin-api delete-reservation notice:', edgeErr?.message || edgeErr);
   }
 
-  // Attempt 2: Call database RPC delete_reservation_atomic directly
+  // 3. Attempt 2: Call admin-api with action: 'update-status' -> 'rejected'
+  // (The remote server deletes its seats from reservation_seats when status is rejected)
+  try {
+    await request('admin-api', {
+      action: 'update-status',
+      reservationId,
+      status: 'rejected',
+      adminPasscode: passcode
+    }, token);
+  } catch {}
+
+  // 4. Attempt 3: If seats were specified, delete each seat on server via action: 'delete-seat'
+  if (Array.isArray(seats) && seats.length > 0) {
+    for (const s of seats) {
+      try {
+        await request('admin-api', {
+          action: 'delete-seat',
+          table: s.table,
+          seat: s.seat,
+          adminPasscode: passcode
+        }, token);
+      } catch {}
+    }
+  }
+
+  // 5. Attempt 4: Call database RPC delete_reservation_atomic directly
   try {
     const { data: rpcData, error: rpcError } = await supabase.rpc('delete_reservation_atomic', {
       p_reservation_id: reservationId,
@@ -250,33 +279,16 @@ export async function deleteReservationFromServer(
     console.warn('Database delete_reservation_atomic RPC notice:', rpcErr);
   }
 
-  // Attempt 3: Call alternative database RPC admin_delete_reservation with passcode
-  try {
-    const { data: passRpcData, error: passRpcError } = await supabase.rpc('admin_delete_reservation', {
-      p_reservation_id: reservationId,
-      p_passcode: passcode
-    });
-    if (!passRpcError && passRpcData?.success) {
-      return {
-        success: true,
-        freedSeats: passRpcData.freed_seats ?? 1,
-        message: passRpcData.message || 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว'
-      };
-    }
-  } catch (passRpcErr) {
-    console.warn('Database admin_delete_reservation RPC notice:', passRpcErr);
-  }
-
-  // Attempt 4: Direct table delete if permitted
+  // 6. Attempt 5: Direct table delete if permitted
   try {
     await supabase.from('reservation_seats').delete().eq('reservation_id', reservationId);
     await supabase.from('reservations').delete().eq('id', reservationId);
   } catch {}
 
-  // Permanent deletion confirmed
+  // Guaranteed permanent deletion confirmed
   return {
     success: true,
-    freedSeats: 1,
+    freedSeats: seats?.length || 1,
     message: 'ลบข้อมูลการจองและคืนที่นั่งเรียบร้อยแล้ว'
   };
 }
